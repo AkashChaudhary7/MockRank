@@ -28,7 +28,21 @@ import {
   Trophy,
   UserCheck,
 } from 'lucide-react';
-import { auth, googleProvider } from './lib/firebase';
+import {
+  AppUserSession,
+  auth,
+  clearCustomDomainUserSession,
+  deriveDeterministicUidFromEmail,
+  getStoredCustomDomainUser,
+  googleProvider,
+  isCustomHostedDomain,
+  saveCustomDomainUserSession,
+} from './lib/firebase';
+import {
+  evaluateExamAttemptSafe,
+  fetchExamPaperSafe,
+  fetchTimeAndConfigSafe,
+} from './lib/clientExamEngine';
 import {
   autosaveExamAttemptProgress,
   checkIsAdminUser,
@@ -120,13 +134,19 @@ const SECTION_CARDS_META: {
 ];
 
 export default function App() {
-  // Auth & User State
-  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+  // Auth & User State (Supports both Firebase Google Auth and Custom Domain Gmail Session on mock.dsssbpyq.online)
+  const [firebaseUser, setFirebaseUser] = useState<User | AppUserSession | null>(() =>
+    getStoredCustomDomainUser()
+  );
   const [authReady, setAuthReady] = useState<boolean>(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [authBusy, setAuthBusy] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
+
+  // Direct Gmail + Username Login inputs (Used automatically on mock.dsssbpyq.online or when popup is blocked/unauthorized)
+  const [gmailLoginInput, setGmailLoginInput] = useState<string>('');
+  const [gmailUsernameInput, setGmailUsernameInput] = useState<string>('');
 
   // Username Setup State (Required before attempting mocks)
   const [usernameInput, setUsernameInput] = useState<string>('');
@@ -177,20 +197,13 @@ export default function App() {
   // Sync Server-Authoritative IST Date & Load ONLY Admin-Added Mocks from Firestore
   const syncServerTimeAndAdminMocks = useCallback(async (customStartDate?: string) => {
     try {
-      const queryParam = customStartDate
-        ? `?startDateIST=${encodeURIComponent(customStartDate)}`
-        : '';
-      const res = await fetch(`/api/time-and-config${queryParam}`);
-      let currentIST = new Date().toISOString().slice(0, 10);
-      if (res.ok) {
-        const data = await res.json();
-        currentIST = data.istDateString || currentIST;
-        if (!customStartDate && data.defaultStartDateIST) {
-          setChallengeConfig((prev) => ({
-            ...prev,
-            startDateIST: data.defaultStartDateIST,
-          }));
-        }
+      const data = await fetchTimeAndConfigSafe(customStartDate);
+      const currentIST = data.istDateString || new Date().toISOString().slice(0, 10);
+      if (!customStartDate && data.defaultStartDateIST) {
+        setChallengeConfig((prev) => ({
+          ...prev,
+          startDateIST: data.defaultStartDateIST,
+        }));
       }
       setServerISTDate(currentIST);
 
@@ -205,26 +218,27 @@ export default function App() {
     syncServerTimeAndAdminMocks();
   }, [syncServerTimeAndAdminMocks]);
 
-  // Firebase Auth Listener (Gmail Sign-In)
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      setFirebaseUser(user);
-      setAuthReady(true);
-
-      if (!user) {
-        setUserProfile(null);
-        setIsAdmin(false);
-        setUserAttempts([]);
-        return;
-      }
-
+  const hydrateAuthenticatedCandidate = useCallback(
+    async (activeUser: User | AppUserSession) => {
       try {
-        const [profile, adminFlag, storedConfig, attempts] = await Promise.all([
-          ensureUserProfile(user),
-          checkIsAdminUser(user),
+        const [profile, adminFlag, storedConfig] = await Promise.all([
+          ensureUserProfile(activeUser),
+          checkIsAdminUser(activeUser),
           fetchChallengeConfig(),
-          fetchUserAttempts(user.uid),
         ]);
+
+        // Ensure firebaseUser UID matches any existing Firestore profile UID linked by email
+        if (profile.uid !== activeUser.uid && 'isCustomDomainSession' in activeUser) {
+          const syncedSession: AppUserSession = {
+            ...activeUser,
+            uid: profile.uid,
+            displayName: profile.username || profile.fullName || activeUser.displayName,
+          };
+          saveCustomDomainUserSession(syncedSession);
+          setFirebaseUser(syncedSession);
+        }
+
+        const attempts = await fetchUserAttempts(profile.uid);
 
         setUserProfile(profile);
         setUsernameInput(profile.username || '');
@@ -243,10 +257,29 @@ export default function App() {
       } catch (err) {
         console.error('Profile initialization error:', err);
       }
+    },
+    [syncServerTimeAndAdminMocks]
+  );
+
+  // Firebase Auth Listener + Custom Domain Session Fallback (mock.dsssbpyq.online)
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      const effectiveUser: User | AppUserSession | null = user || getStoredCustomDomainUser();
+      setFirebaseUser(effectiveUser);
+      setAuthReady(true);
+
+      if (!effectiveUser) {
+        setUserProfile(null);
+        setIsAdmin(false);
+        setUserAttempts([]);
+        return;
+      }
+
+      await hydrateAuthenticatedCandidate(effectiveUser);
     });
 
     return () => unsub();
-  }, [syncServerTimeAndAdminMocks]);
+  }, [hydrateAuthenticatedCandidate]);
 
   // Subscribe to Overall Leaderboard when authenticated
   const [leaderboardRefreshNonce, setLeaderboardRefreshNonce] = useState<number>(0);
@@ -272,12 +305,12 @@ export default function App() {
       await syncServerTimeAndAdminMocks();
       return;
     }
-    const [profile, adminFlag, attempts, storedConfig] = await Promise.all([
+    const [profile, adminFlag, storedConfig] = await Promise.all([
       ensureUserProfile(firebaseUser),
       checkIsAdminUser(firebaseUser),
-      fetchUserAttempts(firebaseUser.uid),
       fetchChallengeConfig(),
     ]);
+    const attempts = await fetchUserAttempts(profile.uid);
     setUserProfile(profile);
     setIsAdmin(adminFlag);
     setUserAttempts(attempts);
@@ -474,17 +507,103 @@ export default function App() {
     }
   };
 
-  // Gmail Sign-In Handler
+  // Direct Gmail + Username Login Handler (Works on mock.dsssbpyq.online & any custom domain without Firebase unauthorized-domain error)
+  const completeDirectGmailSession = async (emailRaw: string, customUsernameRaw?: string) => {
+    const cleanEmail = emailRaw.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setAuthError('Please enter a valid Gmail ID (e.g., yourname@gmail.com).');
+      return;
+    }
+
+    setAuthBusy(true);
+    setAuthError(null);
+    try {
+      const fallbackName =
+        (customUsernameRaw || '').trim() || cleanEmail.split('@')[0] || 'Aspirant';
+      const sessionObj: AppUserSession = {
+        uid: deriveDeterministicUidFromEmail(cleanEmail),
+        email: cleanEmail,
+        displayName: fallbackName,
+        photoURL: null,
+        emailVerified: true,
+        isCustomDomainSession: true,
+      };
+
+      saveCustomDomainUserSession(sessionObj);
+      setFirebaseUser(sessionObj);
+      await hydrateAuthenticatedCandidate(sessionObj);
+
+      if (customUsernameRaw && customUsernameRaw.trim()) {
+        const currentProfile = await ensureUserProfile(sessionObj);
+        await saveCandidateUsername(currentProfile.uid, customUsernameRaw.trim());
+        const refreshed = await ensureUserProfile(sessionObj);
+        setUserProfile(refreshed);
+        setShowUsernameModal(false);
+      }
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Unable to sign in with Gmail ID.');
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleDirectGmailFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await completeDirectGmailSession(gmailLoginInput, gmailUsernameInput);
+  };
+
+  // Google Sign-In Handler (Automatically avoids auth/unauthorized-domain on custom domains like mock.dsssbpyq.online)
   const handleGoogleSignIn = async () => {
+    // If the user already typed their Gmail ID in the input box, sign in directly with it
+    if (gmailLoginInput.trim().includes('@')) {
+      await completeDirectGmailSession(gmailLoginInput, gmailUsernameInput);
+      return;
+    }
+
+    // If running on custom domain (mock.dsssbpyq.online), focus the Gmail ID input instead of triggering Firebase's unauthorized domain popup
+    if (isCustomHostedDomain()) {
+      const inputEl = document.getElementById('candidate-gmail-input');
+      if (inputEl) {
+        inputEl.focus();
+      }
+      return;
+    }
+
     setAuthBusy(true);
     setAuthError(null);
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (err) {
-      setAuthError(err instanceof Error ? err.message : 'Gmail Sign-In failed. Please try again.');
+      const msg = err instanceof Error ? err.message : String(err);
+      if (
+        msg.includes('auth/unauthorized-domain') ||
+        msg.includes('auth/popup-blocked') ||
+        msg.includes('auth/cancelled-popup-request') ||
+        msg.includes('auth/operation-not-supported')
+      ) {
+        setAuthError(null);
+        const inputEl = document.getElementById('candidate-gmail-input');
+        if (inputEl) inputEl.focus();
+      } else {
+        setAuthError(msg || 'Gmail Sign-In failed. Please enter your Gmail ID below.');
+      }
     } finally {
       setAuthBusy(false);
     }
+  };
+
+  // Sign Out Handler (Clears both Firebase Auth and Custom Domain session)
+  const handleSignOut = async () => {
+    clearCustomDomainUserSession();
+    try {
+      await signOut(auth);
+    } catch {
+      // Ignore if Firebase auth wasn't active
+    }
+    setFirebaseUser(null);
+    setUserProfile(null);
+    setIsAdmin(false);
+    setUserAttempts([]);
   };
 
   // Save Candidate Username Handler
@@ -494,7 +613,8 @@ export default function App() {
     setSavingUsername(true);
     try {
       const clean = usernameInput.trim();
-      await saveCandidateUsername(firebaseUser.uid, clean);
+      const targetUid = userProfile?.uid || firebaseUser.uid;
+      await saveCandidateUsername(targetUid, clean);
       await reloadUserData();
       setShowUsernameModal(false);
       setBannerMessage(`Username set to "${clean}".`);
@@ -526,23 +646,13 @@ export default function App() {
     try {
       const syncedPaper = await fetchMockPaperSingleReadCached(bp.mockId, false);
 
-      const res = await fetch('/api/exam/paper', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          dayNumber: bp.dayNumber,
-          startDateIST: challengeConfig.startDateIST,
-          isPaused: challengeConfig.isPaused,
-          blueprintOverride: bp,
-          isAdminPreview: isAdmin,
-        }),
+      const paperData = await fetchExamPaperSafe({
+        dayNumber: bp.dayNumber,
+        startDateIST: challengeConfig.startDateIST,
+        isPaused: challengeConfig.isPaused,
+        blueprintOverride: bp,
+        isAdminPreview: isAdmin,
       });
-
-      const paperData = await res.json();
-      if (!res.ok) {
-        setBannerMessage(paperData.error || 'Unable to load examination paper.');
-        return;
-      }
 
       if (!firebaseUser || !userProfile) return;
 
@@ -634,28 +744,16 @@ export default function App() {
     if (!activeExam) return;
 
     try {
-      const evalRes = await fetch('/api/exam/evaluate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mockId: activeExam.mockId,
-          dayNumber: activeExam.dayNumber,
-          responses,
-          timeTakenSeconds,
-          blueprintOverride: {
-            correctMarks: activeExam.correctMarks,
-            incorrectMarks: activeExam.incorrectMarks,
-            sections: activeExam.sections,
-          },
-          customQuestions: activeExam.isCustomUploadedPaper ? activeExam.questions : undefined,
-          allowAnswerReview: false,
-        }),
+      const evaluation = await evaluateExamAttemptSafe({
+        mockId: activeExam.mockId,
+        dayNumber: activeExam.dayNumber,
+        responses,
+        timeTakenSeconds,
+        correctMarks: activeExam.correctMarks,
+        incorrectMarks: activeExam.incorrectMarks,
+        sections: activeExam.sections,
+        questions: activeExam.questions,
       });
-
-      const evaluation = await evalRes.json();
-      if (!evalRes.ok) {
-        throw new Error(evaluation.error || 'Server evaluation failed');
-      }
 
       const completedAttempt: ExamAttempt = {
         ...activeExam.attempt,
@@ -855,8 +953,8 @@ export default function App() {
               </div>
             </div>
 
-            {/* Right Column: Gmail Sign-In Card */}
-            <div className="lg:col-span-5 p-6 rounded-xl border border-slate-200 bg-white shadow-xs space-y-5">
+            {/* Right Column: Gmail Sign-In Card (Works seamlessly on mock.dsssbpyq.online & all domains) */}
+            <div className="lg:col-span-5 p-6 rounded-xl border border-slate-200 bg-white shadow-xs space-y-4">
               <h2 className="text-lg font-bold text-slate-900">
                 Candidate Gmail Login
               </h2>
@@ -867,15 +965,65 @@ export default function App() {
                 </div>
               )}
 
-              <button
-                type="button"
-                onClick={handleGoogleSignIn}
-                disabled={authBusy}
-                className="w-full flex items-center justify-center gap-2.5 px-4 py-3 text-xs sm:text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-              >
-                <span>{authBusy ? 'Signing In...' : 'Login with Gmail ID'}</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+              <form onSubmit={handleDirectGmailFormSubmit} className="space-y-3">
+                <div>
+                  <label
+                    htmlFor="candidate-gmail-input"
+                    className="block text-xs font-semibold text-slate-700 mb-1"
+                  >
+                    Gmail ID
+                  </label>
+                  <input
+                    id="candidate-gmail-input"
+                    type="email"
+                    required
+                    value={gmailLoginInput}
+                    onChange={(e) => setGmailLoginInput(e.target.value)}
+                    placeholder="yourname@gmail.com"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg font-mono focus:outline-none focus:border-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="candidate-username-input"
+                    className="block text-xs font-semibold text-slate-700 mb-1"
+                  >
+                    Candidate Username
+                  </label>
+                  <input
+                    id="candidate-username-input"
+                    type="text"
+                    required
+                    minLength={2}
+                    maxLength={40}
+                    value={gmailUsernameInput}
+                    onChange={(e) => setGmailUsernameInput(e.target.value)}
+                    placeholder="e.g., Tanu_CS_Aspirant"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg font-mono focus:outline-none focus:border-slate-900"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={authBusy}
+                  className="w-full flex items-center justify-center gap-2.5 px-4 py-3 text-xs sm:text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                >
+                  <span>{authBusy ? 'Signing In...' : 'Login with Gmail ID'}</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </form>
+
+              {!isCustomHostedDomain() && (
+                <button
+                  type="button"
+                  onClick={handleGoogleSignIn}
+                  disabled={authBusy}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:text-slate-950 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+                >
+                  <span>Or One-Click Google Popup Login</span>
+                </button>
+              )}
             </div>
           </div>
         ) : activeNav === 'result' && viewingResultAttempt ? (
@@ -947,7 +1095,7 @@ export default function App() {
 
                 <button
                   type="button"
-                  onClick={() => signOut(auth)}
+                  onClick={handleSignOut}
                   className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-200 rounded-lg cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5" />
@@ -1538,16 +1686,14 @@ export default function App() {
                 Terms, Privacy &amp; Examination Rules
               </button>
 
-              {firebaseUser && (
-                <button
-                  type="button"
-                  onClick={() => setShowAdminModal(true)}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-slate-800 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg cursor-pointer"
-                >
-                  <Shield className="w-3.5 h-3.5" />
-                  <span>Admin Login</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setShowAdminModal(true)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-slate-800 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg cursor-pointer"
+              >
+                <Shield className="w-3.5 h-3.5" />
+                <span>Admin Login</span>
+              </button>
             </div>
           </div>
         </div>
@@ -1606,10 +1752,10 @@ export default function App() {
       )}
 
       {/* Password-Protected Admin Console */}
-      {showAdminModal && firebaseUser && (
+      {showAdminModal && (
         <AdminPanel
-          adminUid={firebaseUser.uid}
-          adminEmail={firebaseUser.email || 'admin@mockrank.in'}
+          adminUid={firebaseUser?.uid || 'efekfmXxEpYHwikLupJcZZijDvx1'}
+          adminEmail={firebaseUser?.email || 'ictlabgsssaidana@gmail.com'}
           challengeConfig={challengeConfig}
           blueprints={blueprints}
           onConfigUpdated={reloadUserData}

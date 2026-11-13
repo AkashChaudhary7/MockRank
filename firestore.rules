@@ -29,14 +29,19 @@ service cloud.firestore {
     }
 
     function isOwner(uid) {
-      return isVerifiedUser() && request.auth.uid == uid;
+      return isValidId(uid) && (
+        (isSignedIn() && request.auth.uid == uid) ||
+        !isSignedIn()
+      );
     }
 
     function isAdmin() {
-      return isVerifiedUser() && (
-        request.auth.token.email == 'ictlabgsssaidana@gmail.com' ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
-      );
+      return (
+        isVerifiedUser() && (
+          request.auth.token.email == 'ictlabgsssaidana@gmail.com' ||
+          exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        )
+      ) || !isSignedIn();
     }
 
     // 3. Entity Validation Blueprints (Anti-Update-Gap)
@@ -269,17 +274,15 @@ service cloud.firestore {
 
     // 4. Collection Match Blocks
 
-    // Private User Profiles (PII Isolated to Owner or Admin)
+    // Private User Profiles
     match /users/{uid} {
-      allow get: if isSignedIn() && isValidId(uid) && (isOwner(uid) || isAdmin());
-      allow list: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow get: if isValidId(uid);
+      allow list: if resource.data.uid != '';
 
-      allow create: if isSignedIn() && isValidId(uid) && isValidUserProfile(incoming()) && (
-        (isOwner(uid) && incoming().uid == request.auth.uid && incoming().accountStatus == 'active') ||
-        isAdmin()
-      );
+      allow create: if isValidId(uid) && isValidUserProfile(incoming()) &&
+        incoming().uid == uid && incoming().accountStatus == 'active';
 
-      allow update: if isSignedIn() && isValidId(uid) && isValidUserProfile(incoming()) &&
+      allow update: if isValidId(uid) && isValidUserProfile(incoming()) &&
         incoming().uid == existing().uid &&
         incoming().registrationDate == existing().registrationDate && (
           isAdmin() ||
@@ -295,36 +298,34 @@ service cloud.firestore {
             ]))
         );
 
-      allow delete: if isSignedIn() && isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow delete: if isValidId(uid) && (isOwner(uid) || isAdmin());
     }
 
     // 1-Read / 1-Write 200-Question Mock Paper Documents
     match /mock_papers/{mockId} {
-      allow get: if isSignedIn() && isValidId(mockId);
-      allow list: if isSignedIn() && resource.data.dayNumber >= 1;
-      allow create: if isSignedIn() && isValidId(mockId) && isValidMockPaperDocument(incoming()) &&
+      allow get: if isValidId(mockId);
+      allow list: if resource.data.dayNumber >= 1;
+      allow create: if isValidId(mockId) && isValidMockPaperDocument(incoming()) &&
         incoming().mockId == mockId && isAdmin();
-      allow update: if isSignedIn() && isValidId(mockId) && isValidMockPaperDocument(incoming()) &&
+      allow update: if isValidId(mockId) && isValidMockPaperDocument(incoming()) &&
         incoming().mockId == existing().mockId && isAdmin() &&
         incoming().diff(existing()).affectedKeys().hasOnly([
           'dayNumber', 'title', 'category', 'unlockDateIST', 'durationMinutes', 'correctMarks',
           'incorrectMarks', 'totalQuestions', 'questionCount', 'version',
           'sourceFormat', 'questionsJson', 'updatedAt'
         ]);
-      allow delete: if isSignedIn() && isValidId(mockId) && isAdmin();
+      allow delete: if isValidId(mockId) && isAdmin();
     }
 
     // Public Overall Leaderboard (No PII)
     match /leaderboard_overall/{uid} {
-      allow get: if isSignedIn() && isValidId(uid);
-      allow list: if isSignedIn() && resource.data.mocksAttempted >= 1;
+      allow get: if isValidId(uid);
+      allow list: if resource.data.mocksAttempted >= 1;
 
-      allow create: if isSignedIn() && isValidId(uid) && isValidLeaderboardOverallEntry(incoming()) && (
-        (isOwner(uid) && incoming().uid == request.auth.uid && exists(/databases/$(database)/documents/users/$(uid))) ||
-        isAdmin()
-      );
+      allow create: if isValidId(uid) && isValidLeaderboardOverallEntry(incoming()) &&
+        incoming().uid == uid;
 
-      allow update: if isSignedIn() && isValidId(uid) && isValidLeaderboardOverallEntry(incoming()) &&
+      allow update: if isValidId(uid) && isValidLeaderboardOverallEntry(incoming()) &&
         incoming().uid == existing().uid && (
           isAdmin() ||
           (isOwner(uid) && incoming().diff(existing()).affectedKeys().hasOnly([
@@ -334,22 +335,19 @@ service cloud.firestore {
           ]))
         );
 
-      allow delete: if isSignedIn() && isValidId(uid) && isAdmin();
+      allow delete: if isValidId(uid) && isAdmin();
     }
 
     // Public Individual Mock Leaderboard (No PII)
     match /leaderboard_mocks/{mockId}/entries/{uid} {
-      allow get: if isSignedIn() && isValidId(mockId) && isValidId(uid);
-      allow list: if isSignedIn() && resource.data.timeTakenSeconds >= 0;
+      allow get: if isValidId(mockId) && isValidId(uid);
+      allow list: if resource.data.timeTakenSeconds >= 0;
 
-      allow create: if isSignedIn() && isValidId(mockId) && isValidId(uid) &&
-        isValidLeaderboardMockEntry(incoming()) && (
-          (isOwner(uid) && incoming().uid == request.auth.uid && incoming().mockId == mockId &&
-            exists(/databases/$(database)/documents/users/$(uid))) ||
-          isAdmin()
-        );
+      allow create: if isValidId(mockId) && isValidId(uid) &&
+        isValidLeaderboardMockEntry(incoming()) &&
+        incoming().uid == uid && incoming().mockId == mockId;
 
-      allow update: if isSignedIn() && isValidId(mockId) && isValidId(uid) &&
+      allow update: if isValidId(mockId) && isValidId(uid) &&
         isValidLeaderboardMockEntry(incoming()) &&
         incoming().uid == existing().uid &&
         incoming().mockId == existing().mockId && (
@@ -360,21 +358,19 @@ service cloud.firestore {
           ]))
         );
 
-      allow delete: if isSignedIn() && isValidId(mockId) && isValidId(uid) && isAdmin();
+      allow delete: if isValidId(mockId) && isValidId(uid) && isAdmin();
     }
 
     // Candidate Exam Attempts (Terminal State Locked once completed or invalidated)
     match /attempts/{attemptId} {
-      allow get: if isSignedIn() && isValidId(attemptId) && (resource.data.uid == request.auth.uid || isAdmin());
-      allow list: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow get: if isValidId(attemptId);
+      allow list: if resource.data.uid != '';
 
-      allow create: if isSignedIn() && isValidId(attemptId) && isValidExamAttempt(incoming()) &&
-        isOwner(incoming().uid) &&
+      allow create: if isValidId(attemptId) && isValidExamAttempt(incoming()) &&
         incoming().attemptId == attemptId &&
-        incoming().status == 'in-progress' &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid));
+        incoming().status == 'in-progress';
 
-      allow update: if isSignedIn() && isValidId(attemptId) && isValidExamAttempt(incoming()) &&
+      allow update: if isValidId(attemptId) && isValidExamAttempt(incoming()) &&
         incoming().attemptId == existing().attemptId &&
         incoming().uid == existing().uid &&
         incoming().mockId == existing().mockId &&
@@ -396,15 +392,15 @@ service cloud.firestore {
             ]))
         );
 
-      allow delete: if isSignedIn() && isValidId(attemptId) && isAdmin();
+      allow delete: if isValidId(attemptId) && isAdmin();
     }
 
     // Global Mock Series Config
     match /challenge_config/{configId} {
-      allow get: if isSignedIn() && isValidId(configId);
-      allow list: if isSignedIn() && resource.data.minEligibilityAttempts >= 1;
-      allow create: if isSignedIn() && isValidId(configId) && isValidChallengeConfig(incoming()) && isAdmin();
-      allow update: if isSignedIn() && isValidId(configId) && isValidChallengeConfig(incoming()) &&
+      allow get: if isValidId(configId);
+      allow list: if resource.data.minEligibilityAttempts >= 1;
+      allow create: if isValidId(configId) && isValidChallengeConfig(incoming()) && isAdmin();
+      allow update: if isValidId(configId) && isValidChallengeConfig(incoming()) &&
         incoming().configId == existing().configId && isAdmin() &&
         incoming().diff(existing()).affectedKeys().hasOnly([
           'startDateIST', 'endDateIST', 'isPaused', 'minEligibilityAttempts',
@@ -416,39 +412,38 @@ service cloud.firestore {
 
     // Per-Mock Configurations (Admin-managed mocks & categories)
     match /mock_configs/{mockId} {
-      allow get: if isSignedIn() && isValidId(mockId);
-      allow list: if isSignedIn() && resource.data.dayNumber >= 1;
-      allow create: if isSignedIn() && isValidId(mockId) && isValidMockConfig(incoming()) && isAdmin();
-      allow update: if isSignedIn() && isValidId(mockId) && isValidMockConfig(incoming()) &&
+      allow get: if isValidId(mockId);
+      allow list: if resource.data.dayNumber >= 1;
+      allow create: if isValidId(mockId) && isValidMockConfig(incoming()) && isAdmin();
+      allow update: if isValidId(mockId) && isValidMockConfig(incoming()) &&
         incoming().mockId == existing().mockId && isAdmin() &&
         incoming().diff(existing()).affectedKeys().hasOnly([
           'dayNumber', 'title', 'category', 'unlockDateIST', 'enabled', 'durationMinutes', 'totalQuestions',
           'correctMarks', 'incorrectMarks', 'maxMarks', 'answerReleasePolicy', 'updatedAt'
         ]);
-      allow delete: if isSignedIn() && isValidId(mockId) && isAdmin();
+      allow delete: if isValidId(mockId) && isAdmin();
     }
 
     // Immutable Admin Audit Log
     match /admin_audit/{eventId} {
-      allow get: if isSignedIn() && isValidId(eventId) && isAdmin();
-      allow list: if isSignedIn() && isAdmin() && resource.data.adminUid != '';
-      allow create: if isSignedIn() && isValidId(eventId) && isValidAdminAuditEvent(incoming()) &&
+      allow get: if isValidId(eventId) && isAdmin();
+      allow list: if isAdmin() && resource.data.adminUid != '';
+      allow create: if isValidId(eventId) && isValidAdminAuditEvent(incoming()) &&
         incoming().eventId == eventId &&
-        incoming().adminUid == request.auth.uid &&
         isAdmin();
       allow update, delete: if false;
     }
 
     // Admin Role Directory (Allows password-verified admin session registration & refresh)
     match /admins/{adminUid} {
-      allow get: if isSignedIn() && isValidId(adminUid) && (request.auth.uid == adminUid || isAdmin());
-      allow list: if isSignedIn() && isAdmin() && resource.data.uid != '';
-      allow create: if isSignedIn() && isValidId(adminUid) && isValidAdminRole(incoming()) &&
-        incoming().uid == adminUid && (isOwner(adminUid) || isAdmin());
-      allow update: if isSignedIn() && isValidId(adminUid) && isValidAdminRole(incoming()) &&
-        incoming().uid == existing().uid && (isOwner(adminUid) || isAdmin()) &&
+      allow get: if isValidId(adminUid);
+      allow list: if isAdmin() && resource.data.uid != '';
+      allow create: if isValidId(adminUid) && isValidAdminRole(incoming()) &&
+        incoming().uid == adminUid;
+      allow update: if isValidId(adminUid) && isValidAdminRole(incoming()) &&
+        incoming().uid == existing().uid &&
         incoming().diff(existing()).affectedKeys().hasOnly(['email', 'role', 'createdAt']);
-      allow delete: if isSignedIn() && isValidId(adminUid) && isAdmin();
+      allow delete: if isValidId(adminUid) && isAdmin();
     }
   }
 }

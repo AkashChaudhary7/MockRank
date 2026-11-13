@@ -18,6 +18,7 @@ import {
   QuestionReviewItem,
   SectionScoreBreakdown,
 } from '../types/mockrank';
+import { fetchExamReviewSafe } from '../lib/clientExamEngine';
 
 interface MockResultPageProps {
   attempt: ExamAttempt;
@@ -165,23 +166,28 @@ export const MockResultModal: React.FC<MockResultPageProps> = ({
           }
         }
 
-        const res = await fetch('/api/exam/review', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            mockId: attempt.mockId,
-            dayNumber: attempt.dayNumber,
-            responses: attempt.responses,
-            answerReleasePolicy,
-            startDateIST,
-            customQuestions: cachedQuestions,
-            isAdmin,
-          }),
+        if (!cachedQuestions || cachedQuestions.length === 0) {
+          try {
+            const { fetchMockPaperSingleReadCached } = await import('../lib/firestoreService');
+            const remotePaper = await fetchMockPaperSingleReadCached(attempt.mockId, false);
+            if (remotePaper && remotePaper.questions.length > 0) {
+              cachedQuestions = remotePaper.questions;
+            }
+          } catch {
+            // Ignore remote paper fetch error
+          }
+        }
+
+        const data = await fetchExamReviewSafe({
+          mockId: attempt.mockId,
+          dayNumber: attempt.dayNumber,
+          responses: attempt.responses,
+          answerReleasePolicy,
+          startDateIST,
+          customQuestions: cachedQuestions,
+          isAdmin,
         });
-        const data = await res.json();
-        if (!res.ok) {
-          if (!cancelled) setReviewError(data.error || 'Answer key release is currently locked.');
-        } else if (!cancelled) {
+        if (!cancelled) {
           setReviewItems(data.reviewItems || []);
         }
       } catch (err) {

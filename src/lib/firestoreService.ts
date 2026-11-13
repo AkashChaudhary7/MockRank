@@ -16,6 +16,7 @@ import {
 } from 'firebase/firestore';
 import { User } from 'firebase/auth';
 import {
+  AppUserSession,
   BLUEPRINT_CONSTRAINTS,
   BOOTSTRAPPED_ADMIN_EMAIL,
   db,
@@ -23,6 +24,7 @@ import {
   OperationType,
   sanitizeId,
   sanitizeString,
+  saveCustomDomainUserSession,
 } from './firebase';
 import {
   AdminAuditEvent,
@@ -61,7 +63,10 @@ const PART_B_SUBJECTS: SubjectSlug[] = [
   'teaching-methodology',
 ];
 
-export async function ensureUserProfile(user: User, customName?: string): Promise<UserProfile> {
+export async function ensureUserProfile(
+  user: User | AppUserSession,
+  customName?: string
+): Promise<UserProfile> {
   const uid = sanitizeId(user.uid);
   const path = `users/${uid}`;
   const userRef = doc(db, 'users', uid);
@@ -69,7 +74,41 @@ export async function ensureUserProfile(user: User, customName?: string): Promis
   try {
     const snap = await getDoc(userRef);
     if (snap.exists()) {
-      return snap.data() as UserProfile;
+      const existingData = snap.data() as UserProfile;
+      if (customName && (!existingData.username || !existingData.username.trim())) {
+        await saveCandidateUsername(uid, customName);
+        return {
+          ...existingData,
+          username: sanitizeString(customName, 60, ''),
+          fullName: sanitizeString(customName, BLUEPRINT_CONSTRAINTS.NAME_MAX_LEN),
+        };
+      }
+      return existingData;
+    }
+
+    // If logging in from a custom domain (like mock.dsssbpyq.online), check if an account with the same Gmail already exists
+    if (user.email) {
+      const cleanEmail = user.email.trim().toLowerCase();
+      const emailQuery = query(
+        collection(db, 'users'),
+        where('email', '==', cleanEmail),
+        limit(1)
+      );
+      const emailSnap = await getDocs(emailQuery);
+      if (!emailSnap.empty) {
+        const matchedProfile = emailSnap.docs[0].data() as UserProfile;
+        if ('isCustomDomainSession' in user && user.isCustomDomainSession) {
+          saveCustomDomainUserSession({
+            uid: matchedProfile.uid,
+            email: matchedProfile.email,
+            displayName: matchedProfile.username || matchedProfile.fullName,
+            photoURL: matchedProfile.photoURL || null,
+            emailVerified: true,
+            isCustomDomainSession: true,
+          });
+        }
+        return matchedProfile;
+      }
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, path);
@@ -82,7 +121,10 @@ export async function ensureUserProfile(user: User, customName?: string): Promis
       customName || user.displayName || user.email?.split('@')[0] || 'Aspirant',
       BLUEPRINT_CONSTRAINTS.NAME_MAX_LEN
     ),
-    email: sanitizeString(user.email || 'candidate@mockrank.in', BLUEPRINT_CONSTRAINTS.EMAIL_MAX_LEN),
+    email: sanitizeString(
+      (user.email || 'candidate@mockrank.in').toLowerCase(),
+      BLUEPRINT_CONSTRAINTS.EMAIL_MAX_LEN
+    ),
     photoURL: sanitizeString(user.photoURL || '', BLUEPRINT_CONSTRAINTS.PHOTO_MAX_LEN, ''),
     registrationDate: new Date().toISOString().slice(0, 10),
     accountStatus: 'active',
@@ -133,8 +175,8 @@ export async function saveCandidateUsername(uid: string, username: string): Prom
   }
 }
 
-export async function checkIsAdminUser(user: User | null): Promise<boolean> {
-  if (!user || !user.emailVerified) return false;
+export async function checkIsAdminUser(user: User | AppUserSession | null): Promise<boolean> {
+  if (!user) return false;
   if (user.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase()) {
     return true;
   }

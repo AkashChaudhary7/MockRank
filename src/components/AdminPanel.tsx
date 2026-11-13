@@ -44,6 +44,10 @@ import {
   saveMockPaperSingleWrite,
   saveMockToLocalMemoryOnly,
 } from '../lib/firestoreService';
+import {
+  fetchQuestionBankHealthSafe,
+  verifyAdminPasswordSafe,
+} from '../lib/clientExamEngine';
 
 interface AdminPanelProps {
   adminUid: string;
@@ -775,11 +779,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const loadQuestionBankHealth = async (day = previewDay) => {
     setLoadingBank(true);
     try {
-      const res = await fetch(`/api/admin/question-bank-health?dayNumber=${day}`);
-      const data = await res.json();
-      if (res.ok) {
-        setBankHealth(data);
-      }
+      const data = await fetchQuestionBankHealthSafe(day);
+      setBankHealth(data);
     } finally {
       setLoadingBank(false);
     }
@@ -1054,14 +1055,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setVerifyingPassword(true);
     setPasswordError(null);
     try {
-      const res = await fetch('/api/admin/verify-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: adminPasswordInput }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.verified) {
-        setPasswordError(data.error || 'Invalid administrator password.');
+      const verified = await verifyAdminPasswordSafe(adminPasswordInput);
+      if (!verified) {
+        setPasswordError('Invalid administrator password. Access denied.');
       } else {
         await registerAdminSessionInFirestore(adminUid, adminEmail);
         setIsPasswordVerified(true);

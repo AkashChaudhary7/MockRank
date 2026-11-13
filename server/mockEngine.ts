@@ -211,10 +211,18 @@ export function loadMasterSubjectBanks(forceReload = false): Record<SubjectSlug,
   const result = {} as Record<SubjectSlug, MasterSubjectBank>;
 
   for (const subject of ALL_SUBJECTS) {
-    const filePath = path.join(baseDir, `${subject}.json`);
-    const raw = fs.readFileSync(filePath, 'utf-8');
-    const parsed = JSON.parse(raw) as MasterSubjectBank;
-    result[subject] = parsed;
+    try {
+      const filePath = path.join(baseDir, `${subject}.json`);
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const parsed = JSON.parse(raw) as MasterSubjectBank;
+      result[subject] = parsed;
+    } catch {
+      result[subject] = {
+        subject,
+        version: 1,
+        questions: [],
+      };
+    }
   }
 
   cachedSubjectBanks = result;
@@ -226,15 +234,24 @@ export function loadPrivateAnswerKeys(forceReload = false): MasterAnswerKey {
     return cachedAnswerKeys;
   }
 
-  const filePath = path.resolve(
-    process.cwd(),
-    'server',
-    'private-question-keys',
-    'master-answer-key.json'
-  );
-  const raw = fs.readFileSync(filePath, 'utf-8');
-  cachedAnswerKeys = JSON.parse(raw) as MasterAnswerKey;
-  return cachedAnswerKeys;
+  try {
+    const filePath = path.resolve(
+      process.cwd(),
+      'server',
+      'private-question-keys',
+      'master-answer-key.json'
+    );
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    cachedAnswerKeys = JSON.parse(raw) as MasterAnswerKey;
+    return cachedAnswerKeys;
+  } catch {
+    cachedAnswerKeys = {
+      version: 1,
+      repository: 'private-question-keys',
+      keys: {},
+    };
+    return cachedAnswerKeys;
+  }
 }
 
 const MOCK_TITLES: string[] = [

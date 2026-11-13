@@ -13,6 +13,11 @@
       ]
     }
   ],
+  "functions": {
+    "api/index.ts": {
+      "includeFiles": "{public/question-bank/**,public/assets/**,server/private-question-keys/**}"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
