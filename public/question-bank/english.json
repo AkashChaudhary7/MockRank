@@ -1,0 +1,136 @@
+{
+  "subject": "english",
+  "version": 1,
+  "questions": [
+    {
+      "id": "ENG001",
+      "topic": "Subject-Verb Agreement",
+      "difficulty": "medium",
+      "question": "Choose the grammatically correct option to complete the sentence: 'Neither the principal nor the teachers _____ present at the meeting yesterday.'",
+      "options": ["was", "were", "is", "has been"],
+      "language": "en"
+    },
+    {
+      "id": "ENG002",
+      "topic": "Vocabulary — Synonyms",
+      "difficulty": "medium",
+      "question": "Select the word most similar in meaning to 'EPHEMERAL':",
+      "options": ["Permanent", "Short-lived", "Celestial", "Rigorous"],
+      "language": "en"
+    },
+    {
+      "id": "ENG003",
+      "topic": "Idioms & Phrases",
+      "difficulty": "easy",
+      "question": "What does the idiom 'To burn the midnight oil' mean?",
+      "options": ["To waste valuable resources", "To work or study late into the night", "To create a sudden crisis", "To destroy old documents"],
+      "language": "en"
+    },
+    {
+      "id": "ENG004",
+      "topic": "Active & Passive Voice",
+      "difficulty": "medium",
+      "question": "Convert to Passive Voice: 'The committee is reviewing the examination blueprint.'",
+      "options": [
+        "The examination blueprint was reviewed by the committee.",
+        "The examination blueprint is being reviewed by the committee.",
+        "The examination blueprint has been reviewed by the committee.",
+        "The examination blueprint is reviewed by the committee."
+      ],
+      "language": "en"
+    },
+    {
+      "id": "ENG005",
+      "topic": "Vocabulary — Antonyms",
+      "difficulty": "medium",
+      "question": "Choose the word that is opposite in meaning to 'MITIGATE':",
+      "options": ["Alleviate", "Aggravate", "Soften", "Appease"],
+      "language": "en"
+    },
+    {
+      "id": "ENG006",
+      "topic": "One-Word Substitution",
+      "difficulty": "medium",
+      "question": "Select the single word for: 'A person who speaks many languages fluently.'",
+      "options": ["Linguist", "Polyglot", "Orator", "Philanthropist"],
+      "language": "en"
+    },
+    {
+      "id": "ENG007",
+      "topic": "Prepositions",
+      "difficulty": "easy",
+      "question": "Fill in the blank with the appropriate preposition: 'The candidate was exempted _____ paying the application fee.'",
+      "options": ["of", "from", "with", "by"],
+      "language": "en"
+    },
+    {
+      "id": "ENG008",
+      "topic": "Direct & Indirect Speech",
+      "difficulty": "medium",
+      "question": "Change into Indirect Speech: The teacher said, 'Water boils at 100 degrees Celsius.'",
+      "options": [
+        "The teacher said that water boiled at 100 degrees Celsius.",
+        "The teacher said that water boils at 100 degrees Celsius.",
+        "The teacher told water had boiled at 100 degrees Celsius.",
+        "The teacher asked if water boils at 100 degrees Celsius."
+      ],
+      "language": "en"
+    },
+    {
+      "id": "ENG009",
+      "topic": "Spelling Correction",
+      "difficulty": "easy",
+      "question": "Identify the correctly spelt word from the options below:",
+      "options": ["Accomodation", "Accommodation", "Acommodation", "Acomodation"],
+      "language": "en"
+    },
+    {
+      "id": "ENG010",
+      "topic": "Error Detection",
+      "difficulty": "hard",
+      "question": "Identify the segment with a grammatical error: 'Hardly had I reached the examination centre (A) / than the gate closed (B) / for all latecomers (C) / No error (D).'",
+      "options": ["Segment A", "Segment B ('than' should be 'when')", "Segment C", "Segment D"],
+      "language": "en"
+    },
+    {
+      "id": "ENG011",
+      "topic": "Conditional Sentences",
+      "difficulty": "medium",
+      "question": "Complete the conditional sentence: 'If she _____ harder, she would have cleared the cutoff in the first attempt.'",
+      "options": ["studied", "had studied", "studies", "would study"],
+      "language": "en"
+    },
+    {
+      "id": "ENG012",
+      "topic": "Vocabulary — Synonyms",
+      "difficulty": "hard",
+      "question": "Choose the closest synonym for the word 'PRAGMATIC':",
+      "options": ["Idealistic", "Practical", "Theoretical", "Ambiguous"],
+      "language": "en"
+    },
+    {
+      "id": "ENG013",
+      "topic": "Phrasal Verbs",
+      "difficulty": "medium",
+      "question": "What is the meaning of the phrasal verb 'Call off' in 'The union decided to call off the strike'?",
+      "options": ["Postpone temporarily", "Cancel completely", "Announce publicly", "Intensify"],
+      "language": "en"
+    },
+    {
+      "id": "ENG014",
+      "topic": "Articles & Determiners",
+      "difficulty": "easy",
+      "question": "Fill in the blank: 'He holds _____ M.Tech degree in Computer Science from an eminent institute.'",
+      "options": ["a", "an", "the", "no article"],
+      "language": "en"
+    },
+    {
+      "id": "ENG015",
+      "topic": "Sentence Improvement",
+      "difficulty": "medium",
+      "question": "Select the best replacement for the underlined phrase: 'I prefer coding in Python than C++.'",
+      "options": ["prefer coding in Python to C++", "prefer coding in Python from C++", "prefer coding in Python over than C++", "No improvement required"],
+      "language": "en"
+    }
+  ]
+}

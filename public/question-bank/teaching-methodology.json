@@ -1,0 +1,151 @@
+{
+  "subject": "teaching-methodology",
+  "version": 1,
+  "questions": [
+    {
+      "id": "TM001",
+      "topic": "Bloom's Taxonomy",
+      "difficulty": "medium",
+      "question": "In the revised Bloom's Taxonomy (Anderson & Krathwohl, 2001), which is the highest cognitive domain level?",
+      "options": ["Evaluating", "Creating", "Analyzing", "Synthesizing"],
+      "language": "en"
+    },
+    {
+      "id": "TM002",
+      "topic": "Constructivism & Pedagogy",
+      "difficulty": "medium",
+      "question": "Lev Vygotsky's concept of the 'Zone of Proximal Development' (ZPD) refers to:",
+      "options": [
+        "Tasks a learner can complete independently without any external help",
+        "The difference between what a learner can do without help and what they can achieve with guidance from a skilled partner",
+        "Fixed biological stages of cognitive maturation",
+        "Standardized summative grading benchmarks"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "TM003",
+      "topic": "National Education Policy (NEP 2020)",
+      "difficulty": "easy",
+      "question": "Under the National Education Policy (NEP) 2020, the traditional 10+2 school curricular structure is replaced by which structure?",
+      "options": ["5+3+3+4", "4+3+3+4", "5+4+3+3", "6+3+3+2"],
+      "language": "en"
+    },
+    {
+      "id": "TM004",
+      "topic": "Assessment & Evaluation",
+      "difficulty": "medium",
+      "question": "Which type of assessment is conducted during the instructional process to monitor student learning and provide ongoing feedback?",
+      "options": ["Summative Assessment", "Formative Assessment", "Norm-Referenced Final Exam", "Placement Certification"],
+      "language": "en"
+    },
+    {
+      "id": "TM005",
+      "topic": "Inclusive Education",
+      "difficulty": "medium",
+      "question": "According to the RPwD Act 2016, how many categories of benchmark disabilities are officially recognized in India?",
+      "options": ["7", "14", "21", "28"],
+      "language": "en"
+    },
+    {
+      "id": "TM006",
+      "topic": "Computer Science Pedagogy",
+      "difficulty": "medium",
+      "question": "When teaching recursion or sorting algorithms in a Computer Science lab, which instructional strategy best promotes algorithmic thinking?",
+      "options": [
+        "Rote memorization of syntax templates",
+        "Dry-running trace tables step-by-step with visual state transitions",
+        "Dictating source code on the blackboard without execution",
+        "Skipping pseudocode and directly testing production compilers"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "TM007",
+      "topic": "Learning Theories",
+      "difficulty": "easy",
+      "question": "Who proposed the theory of Operant Conditioning based on reinforcement and punishment?",
+      "options": ["Ivan Pavlov", "B.F. Skinner", "Jean Piaget", "Albert Bandura"],
+      "language": "en"
+    },
+    {
+      "id": "TM008",
+      "topic": "Micro-Teaching",
+      "difficulty": "medium",
+      "question": "What is the standard total duration of a complete Indian Model of Micro-Teaching cycle (Teach -> Feedback -> Re-plan -> Re-teach -> Re-feedback)?",
+      "options": ["15 minutes", "24 minutes", "36 minutes", "60 minutes"],
+      "language": "en"
+    },
+    {
+      "id": "TM009",
+      "topic": "Educational Psychology",
+      "difficulty": "medium",
+      "question": "According to Jean Piaget, during which stage of cognitive development does a child develop the ability to think abstractly and test hypotheses systematically?",
+      "options": ["Sensorimotor Stage", "Preoperational Stage", "Concrete Operational Stage", "Formal Operational Stage"],
+      "language": "en"
+    },
+    {
+      "id": "TM010",
+      "topic": "ICT in Education",
+      "difficulty": "easy",
+      "question": "What does SWAYAM (Study Webs of Active-Learning for Young Aspiring Minds) primarily provide?",
+      "options": [
+        "Hardware subsidies for private schools",
+        "An indigenous MOOC platform offering free online courses from Class 9 to post-graduation",
+        "Biometric attendance tracking for teachers",
+        "Offline printed textbooks only"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "TM011",
+      "topic": "Diagnostic & Remedial Teaching",
+      "difficulty": "medium",
+      "question": "What is the primary purpose of a Diagnostic Test in classroom instruction?",
+      "options": [
+        "To rank students for scholarship distribution",
+        "To identify specific learning gaps and underlying causes of persistent errors",
+        "To certify students for board graduation",
+        "To evaluate school infrastructure"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "TM012",
+      "topic": "Motivation & Learning",
+      "difficulty": "easy",
+      "question": "A student who writes code and solves algorithmic problems purely for the joy of problem-solving is demonstrating:",
+      "options": ["Extrinsic Motivation", "Intrinsic Motivation", "Avoidance Conditioning", "Vicarious Reinforcement"],
+      "language": "en"
+    },
+    {
+      "id": "TM013",
+      "topic": "RTE Act 2009",
+      "difficulty": "medium",
+      "question": "The Right of Children to Free and Compulsory Education (RTE) Act, 2009 guarantees free and compulsory education to children of which age group?",
+      "options": ["3 to 14 years", "6 to 14 years", "6 to 18 years", "5 to 16 years"],
+      "language": "en"
+    },
+    {
+      "id": "TM014",
+      "topic": "Instructional Design",
+      "difficulty": "hard",
+      "question": "In Edgar Dale's Cone of Experience, which of the following learning activities results in the highest retention and most concrete experience?",
+      "options": [
+        "Reading technical documentation",
+        "Listening to a classroom lecture",
+        "Watching a video demonstration",
+        "Hands-on direct purposeful experience (building and debugging a working program)"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "TM015",
+      "topic": "Test Reliability & Validity",
+      "difficulty": "hard",
+      "question": "If an examination paper consistently yields nearly identical scores when administered repeatedly to the same group under similar conditions, the test possesses high:",
+      "options": ["Content Validity", "Reliability", "Objectivity only", "Usability"],
+      "language": "en"
+    }
+  ]
+}

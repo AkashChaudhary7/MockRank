@@ -1,0 +1,318 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Candidate profile with Gmail login, custom username, section averages, and Part A/B scores.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "fullName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "username": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "photoURL": { "type": "string", "maxLength": 500 },
+        "registrationDate": { "type": "string", "maxLength": 40 },
+        "accountStatus": { "type": "string", "enum": ["active", "suspended"] },
+        "premiumEntitlement": { "type": "boolean" },
+        "challengeEntitlement": { "type": "boolean" },
+        "mocksAttempted": { "type": "number" },
+        "averageScore": { "type": "number" },
+        "highestScore": { "type": "number" },
+        "latestScore": { "type": "number" },
+        "averageAccuracy": { "type": "number" },
+        "partAAverageScore": { "type": "number" },
+        "partBAverageScore": { "type": "number" },
+        "sectionAverages": { "type": "object" },
+        "lastAttemptedMock": { "type": "string", "maxLength": 32 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid",
+        "fullName",
+        "email",
+        "registrationDate",
+        "accountStatus",
+        "premiumEntitlement",
+        "challengeEntitlement",
+        "mocksAttempted",
+        "averageScore",
+        "highestScore",
+        "latestScore",
+        "averageAccuracy",
+        "updatedAt"
+      ]
+    },
+    "MockPaperDocument": {
+      "title": "MockPaperDocument",
+      "description": "Single-document mock paper containing up to 200 questions for 1-read and 1-write Firestore operation.",
+      "type": "object",
+      "properties": {
+        "mockId": { "type": "string", "maxLength": 32, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "dayNumber": { "type": "number" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "unlockDateIST": { "type": "string", "maxLength": 20 },
+        "durationMinutes": { "type": "number" },
+        "correctMarks": { "type": "number" },
+        "incorrectMarks": { "type": "number" },
+        "version": { "type": "number" },
+        "questionsJson": { "type": "string", "maxLength": 900000 },
+        "questionCount": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "mockId",
+        "dayNumber",
+        "title",
+        "unlockDateIST",
+        "durationMinutes",
+        "correctMarks",
+        "incorrectMarks",
+        "version",
+        "questionsJson",
+        "questionCount",
+        "updatedAt"
+      ]
+    },
+    "LeaderboardOverallEntry": {
+      "title": "LeaderboardOverallEntry",
+      "description": "Publicly visible overall leaderboard aggregate entry without PII.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "candidateName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "averageScore": { "type": "number" },
+        "mocksAttempted": { "type": "number" },
+        "bestScore": { "type": "number" },
+        "latestScore": { "type": "number" },
+        "averageAccuracy": { "type": "number" },
+        "partAAverageScore": { "type": "number" },
+        "partBAverageScore": { "type": "number" },
+        "lastSubmissionAt": { "type": "string", "maxLength": 40 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid",
+        "candidateName",
+        "averageScore",
+        "mocksAttempted",
+        "bestScore",
+        "latestScore",
+        "averageAccuracy",
+        "lastSubmissionAt",
+        "updatedAt"
+      ]
+    },
+    "LeaderboardMockEntry": {
+      "title": "LeaderboardMockEntry",
+      "description": "Publicly visible individual mock leaderboard entry without PII.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "mockId": { "type": "string", "maxLength": 32, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "candidateName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "score": { "type": "number" },
+        "correctAnswers": { "type": "number" },
+        "incorrectAnswers": { "type": "number" },
+        "unattemptedQuestions": { "type": "number" },
+        "accuracy": { "type": "number" },
+        "timeTakenSeconds": { "type": "number" },
+        "submittedAt": { "type": "string", "maxLength": 40 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid",
+        "mockId",
+        "candidateName",
+        "score",
+        "correctAnswers",
+        "incorrectAnswers",
+        "unattemptedQuestions",
+        "accuracy",
+        "timeTakenSeconds",
+        "submittedAt",
+        "updatedAt"
+      ]
+    },
+    "ExamAttempt": {
+      "title": "ExamAttempt",
+      "description": "Candidate examination session and official scored result.",
+      "type": "object",
+      "properties": {
+        "attemptId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "mockId": { "type": "string", "maxLength": 32, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "dayNumber": { "type": "number" },
+        "status": { "type": "string", "enum": ["in-progress", "completed", "invalidated"] },
+        "startedAt": { "type": "string", "maxLength": 40 },
+        "expiresAt": { "type": "string", "maxLength": 40 },
+        "lastHeartbeatAt": { "type": "string", "maxLength": 40 },
+        "submittedAt": { "type": "string", "maxLength": 40 },
+        "responses": { "type": "object" },
+        "markedForReview": { "type": "array" },
+        "score": { "type": "number" },
+        "partAScore": { "type": "number" },
+        "partBScore": { "type": "number" },
+        "correctAnswers": { "type": "number" },
+        "incorrectAnswers": { "type": "number" },
+        "unattemptedQuestions": { "type": "number" },
+        "accuracy": { "type": "number" },
+        "timeTakenSeconds": { "type": "number" },
+        "sectionScores": { "type": "object" },
+        "questionBankVersion": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "attemptId",
+        "uid",
+        "mockId",
+        "dayNumber",
+        "status",
+        "startedAt",
+        "expiresAt",
+        "lastHeartbeatAt",
+        "responses",
+        "markedForReview",
+        "score",
+        "correctAnswers",
+        "incorrectAnswers",
+        "unattemptedQuestions",
+        "accuracy",
+        "timeTakenSeconds",
+        "questionBankVersion",
+        "updatedAt"
+      ]
+    },
+    "ChallengeConfig": {
+      "title": "ChallengeConfig",
+      "description": "Global Mock Series configuration managed by administrators.",
+      "type": "object",
+      "properties": {
+        "configId": { "type": "string", "maxLength": 32, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "startDateIST": { "type": "string", "maxLength": 20 },
+        "endDateIST": { "type": "string", "maxLength": 20 },
+        "isPaused": { "type": "boolean" },
+        "minEligibilityAttempts": { "type": "number" },
+        "lateAttemptPolicy": { "type": "string", "enum": ["allow-unlocked", "strict-daily"] },
+        "defaultCorrectMarks": { "type": "number" },
+        "defaultIncorrectMarks": { "type": "number" },
+        "delayedAnswerRelease": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "configId",
+        "startDateIST",
+        "endDateIST",
+        "isPaused",
+        "minEligibilityAttempts",
+        "lateAttemptPolicy",
+        "defaultCorrectMarks",
+        "defaultIncorrectMarks",
+        "delayedAnswerRelease",
+        "updatedAt"
+      ]
+    },
+    "MockConfig": {
+      "title": "MockConfig",
+      "description": "Per-mock blueprint, unlock date, and scoring configuration.",
+      "type": "object",
+      "properties": {
+        "mockId": { "type": "string", "maxLength": 32, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "dayNumber": { "type": "number" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "unlockDateIST": { "type": "string", "maxLength": 20 },
+        "enabled": { "type": "boolean" },
+        "durationMinutes": { "type": "number" },
+        "totalQuestions": { "type": "number" },
+        "correctMarks": { "type": "number" },
+        "incorrectMarks": { "type": "number" },
+        "maxMarks": { "type": "number" },
+        "answerReleasePolicy": { "type": "string", "enum": ["after-submission", "after-challenge", "manual"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "mockId",
+        "dayNumber",
+        "title",
+        "enabled",
+        "durationMinutes",
+        "totalQuestions",
+        "correctMarks",
+        "incorrectMarks",
+        "maxMarks",
+        "answerReleasePolicy",
+        "updatedAt"
+      ]
+    },
+    "AdminAuditEvent": {
+      "title": "AdminAuditEvent",
+      "description": "Audit log entry for privileged administrative actions.",
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "adminUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "adminEmail": { "type": "string", "maxLength": 254 },
+        "action": { "type": "string", "maxLength": 100 },
+        "targetUid": { "type": "string", "maxLength": 128 },
+        "targetMockId": { "type": "string", "maxLength": 32 },
+        "reason": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "eventId",
+        "adminUid",
+        "adminEmail",
+        "action",
+        "reason",
+        "createdAt"
+      ]
+    },
+    "AdminRole": {
+      "title": "AdminRole",
+      "description": "Document designating a UID as an administrator.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "maxLength": 254 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private candidate profile, username, section averages, and Part A/B statistics."
+    },
+    "/mock_papers/{mockId}": {
+      "schema": { "$ref": "#/entities/MockPaperDocument" },
+      "description": "Single-document 200-question mock papers synced in 1 read/write operation."
+    },
+    "/leaderboard_overall/{uid}": {
+      "schema": { "$ref": "#/entities/LeaderboardOverallEntry" },
+      "description": "Public overall leaderboard aggregate documents sorted by averageScore."
+    },
+    "/leaderboard_mocks/{mockId}/entries/{uid}": {
+      "schema": { "$ref": "#/entities/LeaderboardMockEntry" },
+      "description": "Public individual mock leaderboard entries."
+    },
+    "/attempts/{attemptId}": {
+      "schema": { "$ref": "#/entities/ExamAttempt" },
+      "description": "Candidate mock attempts, responses, heartbeats, and verified scores."
+    },
+    "/challenge_config/{configId}": {
+      "schema": { "$ref": "#/entities/ChallengeConfig" },
+      "description": "Global mock series unlock configuration."
+    },
+    "/mock_configs/{mockId}": {
+      "schema": { "$ref": "#/entities/MockConfig" },
+      "description": "Individual mock configuration, unlock date, and marking scheme."
+    },
+    "/admin_audit/{eventId}": {
+      "schema": { "$ref": "#/entities/AdminAuditEvent" },
+      "description": "Immutable audit trail of admin actions."
+    },
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/AdminRole" },
+      "description": "Admin role directory."
+    }
+  }
+}

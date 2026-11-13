@@ -1,0 +1,136 @@
+{
+  "subject": "mathematics",
+  "version": 1,
+  "questions": [
+    {
+      "id": "MAT001",
+      "topic": "Percentage",
+      "difficulty": "easy",
+      "question": "If the price of a textbook is first increased by 20% and then decreased by 15%, what is the net percentage change in the price?",
+      "options": [
+        "2% increase",
+        "5% increase",
+        "2% decrease",
+        "4% increase"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "MAT002",
+      "topic": "Time & Work",
+      "difficulty": "medium",
+      "question": "A can complete a coding module in 12 days and B can complete the same module in 18 days. If they work together, in how many days will they complete the module?",
+      "options": [
+        "7.2 days",
+        "7.5 days",
+        "8 days",
+        "6.8 days"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "MAT003",
+      "topic": "Ratio & Proportion",
+      "difficulty": "easy",
+      "question": "If A : B = 3 : 4 and B : C = 8 : 9, then what is the ratio A : B : C?",
+      "options": [
+        "6 : 8 : 9",
+        "3 : 8 : 9",
+        "6 : 4 : 9",
+        "4 : 6 : 9"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "MAT004",
+      "topic": "Average",
+      "difficulty": "medium",
+      "question": "The average marks of 15 students in a Computer Science test is 68. If the marks of the top student (96) are excluded, what is the average of the remaining 14 students?",
+      "options": [
+        "65",
+        "66",
+        "66.5",
+        "67"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "MAT005",
+      "topic": "Profit & Loss",
+      "difficulty": "medium",
+      "question": "By selling an article for Rs. 720, a shopkeeper loses 10%. At what price should he sell it to gain 15%?",
+      "options": [
+        "Rs. 900",
+        "Rs. 920",
+        "Rs. 940",
+        "Rs. 880"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "MAT006",
+      "topic": "Simple & Compound Interest",
+      "difficulty": "medium",
+      "question": "What is the compound interest on Rs. 10,000 for 2 years at 10% per annum compounded annually?",
+      "options": [
+        "Rs. 2,000",
+        "Rs. 2,100",
+        "Rs. 2,200",
+        "Rs. 2,050"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "MAT007",
+      "topic": "Time, Speed & Distance",
+      "difficulty": "medium",
+      "question": "A train 180 meters long is running at a speed of 72 km/hr. How much time will it take to cross a pole?",
+      "options": [
+        "8 seconds",
+        "9 seconds",
+        "10 seconds",
+        "12 seconds"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "MAT008",
+      "topic": "Number System",
+      "difficulty": "easy",
+      "question": "What is the HCF of 72, 108, and 180?",
+      "options": [
+        "18",
+        "36",
+        "12",
+        "24"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "MAT009",
+      "topic": "Mensuration",
+      "difficulty": "medium",
+      "question": "If the diagonal of a square is 12√2 cm, what is its perimeter?",
+      "options": [
+        "36 cm",
+        "48 cm",
+        "60 cm",
+        "24 cm"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "MAT010",
+      "topic": "Simplification",
+      "difficulty": "easy",
+      "question": "Evaluate: (256)^(0.16) × (256)^(0.09)",
+      "options": [
+        "4",
+        "8",
+        "16",
+        "64"
+      ],
+      "language": "en"
+    }
+  ]
+}

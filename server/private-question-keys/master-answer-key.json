@@ -1,0 +1,426 @@
+{
+  "version": 1,
+  "repository": "private-question-keys",
+  "keys": {
+    "GA001": {
+      "correctIndex": 2,
+      "explanation": "Article 32 of the Indian Constitution confers the Right to Constitutional Remedies, which Dr. B.R. Ambedkar called the 'heart and soul' of the Constitution."
+    },
+    "GA002": {
+      "correctIndex": 1,
+      "explanation": "Mahatma Jyotirao Phule founded the Satyashodhak Samaj (Truth-Seekers' Society) in Pune in 1873 to champion social equity and education."
+    },
+    "GA003": {
+      "correctIndex": 1,
+      "explanation": "The Duncan Passage is a strait in the Indian Ocean that separates South Andaman (Rutland Island) to the north and Little Andaman to the south."
+    },
+    "GA004": {
+      "correctIndex": 1,
+      "explanation": "NABARD was established on 12 July 1982 on the recommendations of the B. Sivaraman Committee (CRAFICARD)."
+    },
+    "GA005": {
+      "correctIndex": 1,
+      "explanation": "Atmospheric refraction of starlight passing through air layers of gradually changing refractive indices causes the apparent twinkling of stars."
+    },
+    "GA006": {
+      "correctIndex": 0,
+      "explanation": "The 42nd Constitutional Amendment Act, 1976 added Part IVA (Article 51A) containing Fundamental Duties based on the Swaran Singh Committee recommendations."
+    },
+    "GA007": {
+      "correctIndex": 1,
+      "explanation": "The 69th Constitutional Amendment Act, 1991 inserted Articles 239AA and 239AB, designating Delhi as the National Capital Territory with a Legislative Assembly."
+    },
+    "GA008": {
+      "correctIndex": 2,
+      "explanation": "The Sutlej River originates from Rakshastal (Rakas Lake) near Lake Mansarovar in Tibet and enters Himachal Pradesh via the Shipki La pass."
+    },
+    "GA009": {
+      "correctIndex": 1,
+      "explanation": "The SI unit of magnetic flux density (magnetic induction B) is Tesla (T), equal to one Weber per square metre (Wb/m²)."
+    },
+    "GA010": {
+      "correctIndex": 3,
+      "explanation": "Major Rock Edict XIII records Emperor Ashoka's remorse over the Kalinga War casualties and his subsequent embrace of Dhamma."
+    },
+    "GA011": {
+      "correctIndex": 2,
+      "explanation": "Sattriya was introduced in the 15th century AD by Srimanta Sankardeva in Assam and is one of the eight recognized classical dances of India."
+    },
+    "GA012": {
+      "correctIndex": 1,
+      "explanation": "The Montreal Protocol (1987) is a landmark multilateral environmental agreement that regulates the production and consumption of ozone-depleting substances (ODS)."
+    },
+    "GA013": {
+      "correctIndex": 1,
+      "explanation": "A reduction in the Cash Reserve Ratio (CRR) leaves commercial banks with larger Vault/NDDTL liquidity, increasing their credit creation and lending capacity."
+    },
+    "GA014": {
+      "correctIndex": 1,
+      "explanation": "Vitamin C (Ascorbic acid) is a water-soluble vitamin essential for the hydroxylation of proline and lysine during collagen biosynthesis."
+    },
+    "GA015": {
+      "correctIndex": 2,
+      "explanation": "Under Article 118(4) of the Indian Constitution, the Speaker of the Lok Sabha presides over a joint sitting of the two Houses of Parliament."
+    },
+    "HIN001": {
+      "correctIndex": 0,
+      "explanation": "'आशीर्वाद' शुद्ध वर्तनी है क्योंकि रेफ ('र्') का उच्चारण 'व' से पूर्व होता है, अतः वह 'वा' के ऊपर लगता है।"
+    },
+    "HIN002": {
+      "correctIndex": 2,
+      "explanation": "'प्रत्युपकार' (प्रति + उपकार) में 'इ' के बाद भिन्न स्वर 'उ' आने पर 'यु' हो गया है, जो यण स्वर संधि का नियम है।"
+    },
+    "HIN003": {
+      "correctIndex": 1,
+      "explanation": "जब दोनों पद मिलकर किसी तीसरे विशेष अर्थ (श्रीकृष्ण/विष्णु) की ओर संकेत करते हैं, तब वहाँ बहुव्रीहि समास होता है।"
+    },
+    "HIN004": {
+      "correctIndex": 1,
+      "explanation": "'गागर में सागर भरना' का अर्थ थोड़े शब्दों में गहन एवं विस्तृत भाव व्यक्त करना है।"
+    },
+    "HIN005": {
+      "correctIndex": 1,
+      "explanation": "'स्थावर' (स्थिर रहने वाला) का सटीक विलोम शब्द 'जंगम' (चलने-फिरने वाला) होता है।"
+    },
+    "HIN006": {
+      "correctIndex": 2,
+      "explanation": "'जलद' (जल देने वाला) बादल का पर्यायवाची है, जबकि राजीव, अरविन्द और पंकज कमल के पर्यायवाची हैं।"
+    },
+    "HIN007": {
+      "correctIndex": 1,
+      "explanation": "'जिसे प्रमाण द्वारा सिद्ध न किया जा सके' उसे 'अप्रमेय' कहते हैं।"
+    },
+    "HIN008": {
+      "correctIndex": 1,
+      "explanation": "'अभ्यागत' (अभि + आगत) में 'अभि' उपसर्ग प्रयुक्त हुआ है।"
+    },
+    "HIN009": {
+      "correctIndex": 1,
+      "explanation": "'अग्नि' संस्कृत का मूल तत्सम शब्द है, जिसका तद्भव रूप 'आग' होता है।"
+    },
+    "HIN010": {
+      "correctIndex": 1,
+      "explanation": "जहाँ किसी वस्तु का किसी स्थान से अलग होने (पृथकता) का भाव प्रकट हो, वहाँ अपादान कारक होता है।"
+    },
+    "HIN011": {
+      "correctIndex": 1,
+      "explanation": "यहाँ 'कनक' शब्द की आवृत्ति दो बार भिन्न-भिन्न अर्थों (सोना तथा धतूरा) में हुई है, अतः यमक अलंकार है।"
+    },
+    "HIN012": {
+      "correctIndex": 2,
+      "explanation": "'यद्यपि... तथापि' से जुड़े आश्रित उपवाक्य वाले वाक्य रचना की दृष्टि से मिश्र वाक्य कहलाते हैं।"
+    },
+    "HIN013": {
+      "correctIndex": 1,
+      "explanation": "'जगन्नाथ' का सही संधि-विच्छेद 'जगत् + नाथ' (व्यंजन संधि) है।"
+    },
+    "HIN014": {
+      "correctIndex": 0,
+      "explanation": "'अधजल गगरी छलकत जाए' लोकोक्ति का अर्थ अल्पज्ञानी या कम गुण वाले व्यक्ति द्वारा अधिक दिखावा करना है।"
+    },
+    "HIN015": {
+      "correctIndex": 0,
+      "explanation": "'उत् + ज्वल' से बनने वाले शब्द की शुद्ध वर्तनी 'उज्ज्वल' (दोनों 'ज्' आधे) होती है।"
+    },
+    "ENG001": {
+      "correctIndex": 1,
+      "explanation": "With 'Neither... nor', the verb agrees with the closer subject ('the teachers', plural), and 'yesterday' requires past tense 'were'."
+    },
+    "ENG002": {
+      "correctIndex": 1,
+      "explanation": "'Ephemeral' means lasting for a very short time (short-lived or transitory)."
+    },
+    "ENG003": {
+      "correctIndex": 1,
+      "explanation": "'To burn the midnight oil' means to read, study, or work late into the night."
+    },
+    "ENG004": {
+      "correctIndex": 1,
+      "explanation": "Present continuous active ('is reviewing') transforms into 'is/am/are + being + past participle' ('is being reviewed')."
+    },
+    "ENG005": {
+      "correctIndex": 1,
+      "explanation": "'Mitigate' means to make less severe; its antonym is 'Aggravate' (to make worse or more severe)."
+    },
+    "ENG006": {
+      "correctIndex": 1,
+      "explanation": "A 'Polyglot' is a person who knows and is able to use several languages."
+    },
+    "ENG007": {
+      "correctIndex": 1,
+      "explanation": "The verb 'exempt' takes the fixed preposition 'from' ('exempted from')."
+    },
+    "ENG008": {
+      "correctIndex": 1,
+      "explanation": "When the reported clause states a universal scientific truth ('Water boils at 100 degrees Celsius'), its tense remains unchanged in indirect speech."
+    },
+    "ENG009": {
+      "correctIndex": 1,
+      "explanation": "'Accommodation' is spelled with a double 'c' and a double 'm'."
+    },
+    "ENG010": {
+      "correctIndex": 1,
+      "explanation": "The correlative conjunction pair is 'Hardly/Scarcely... when' (not 'than', which pairs with 'No sooner')."
+    },
+    "ENG011": {
+      "correctIndex": 1,
+      "explanation": "In a Third Conditional sentence ('would have + V3' in the main clause), the if-clause requires the past perfect tense ('had studied')."
+    },
+    "ENG012": {
+      "correctIndex": 1,
+      "explanation": "'Pragmatic' means dealing with things sensibly and realistically in a practical manner."
+    },
+    "ENG013": {
+      "correctIndex": 1,
+      "explanation": "The phrasal verb 'call off' means to cancel a planned event or action."
+    },
+    "ENG014": {
+      "correctIndex": 1,
+      "explanation": "'M.Tech' begins with a vowel sound (/ɛm/), so it takes the indefinite article 'an'."
+    },
+    "ENG015": {
+      "correctIndex": 0,
+      "explanation": "The verb 'prefer' takes the preposition 'to' rather than 'than' when comparing two nouns or gerunds."
+    },
+    "TM001": {
+      "correctIndex": 1,
+      "explanation": "In the 2001 revised Bloom's Taxonomy by Anderson & Krathwohl, 'Creating' sits at the apex above 'Evaluating'."
+    },
+    "TM002": {
+      "correctIndex": 1,
+      "explanation": "Vygotsky defined the ZPD as the distance between actual developmental level (independent problem solving) and potential development with scaffolding."
+    },
+    "TM003": {
+      "correctIndex": 0,
+      "explanation": "NEP 2020 replaces the 10+2 structure with a 5+3+3+4 curricular and pedagogical structure covering ages 3 to 18."
+    },
+    "TM004": {
+      "correctIndex": 1,
+      "explanation": "Formative assessment ('Assessment for Learning') occurs continuously during instruction to diagnose and improve learning."
+    },
+    "TM005": {
+      "correctIndex": 2,
+      "explanation": "The Rights of Persons with Disabilities (RPwD) Act, 2016 expanded the number of recognized benchmark disabilities from 7 to 21."
+    },
+    "TM006": {
+      "correctIndex": 1,
+      "explanation": "Dry-running trace tables with visual state transitions builds mental models of call stacks and variable mutations rather than rote memorization."
+    },
+    "TM007": {
+      "correctIndex": 1,
+      "explanation": "B.F. Skinner formulated Operant Conditioning, demonstrating how behavior is shaped by reinforcement and punishment schedules."
+    },
+    "TM008": {
+      "correctIndex": 2,
+      "explanation": "According to the NCERT Indian Model of Micro-Teaching, the complete cycle takes 36 minutes (Teach 6m, Feedback 6m, Re-plan 12m, Re-teach 6m, Re-feedback 6m)."
+    },
+    "TM009": {
+      "correctIndex": 3,
+      "explanation": "In Piaget's theory, hypothetico-deductive reasoning and abstract thought emerge during the Formal Operational Stage (11+ years)."
+    },
+    "TM010": {
+      "correctIndex": 1,
+      "explanation": "SWAYAM is the Government of India's national MOOC platform offering interactive courses from Class 9 to post-graduation."
+    },
+    "TM011": {
+      "correctIndex": 1,
+      "explanation": "Diagnostic testing pinpoints specific conceptual misconceptions and underlying causes of learning difficulties prior to remedial instruction."
+    },
+    "TM012": {
+      "correctIndex": 1,
+      "explanation": "Engaging in an activity for inherent satisfaction rather than external reward exemplifies Intrinsic Motivation."
+    },
+    "TM013": {
+      "correctIndex": 1,
+      "explanation": "The RTE Act, 2009 (under Article 21A) mandates free and compulsory elementary education for children aged 6 to 14 years."
+    },
+    "TM014": {
+      "correctIndex": 3,
+      "explanation": "Direct purposeful hands-on experience forms the base of Edgar Dale's Cone of Experience, yielding the deepest comprehension and retention."
+    },
+    "TM015": {
+      "correctIndex": 1,
+      "explanation": "Reliability refers to the consistency and stability of assessment scores across repeated administrations."
+    },
+    "CS001": {
+      "correctIndex": 2,
+      "explanation": "In a singly linked list of n nodes, linear traversal from the head is required in the worst case, resulting in O(n) time complexity."
+    },
+    "CS002": {
+      "correctIndex": 2,
+      "explanation": "FIFO (First-In, First-Out) page replacement can exhibit Belady's Anomaly, where increasing page frames increases page faults. Stack algorithms like LRU and Optimal do not."
+    },
+    "CS003": {
+      "correctIndex": 1,
+      "explanation": "A relation is in BCNF if for every non-trivial functional dependency X -> Y, the determinant X is a superkey of the relation."
+    },
+    "CS004": {
+      "correctIndex": 1,
+      "explanation": "Routers operate at Layer 3 (Network Layer) of the OSI model, inspecting logical IP headers to determine optimal routing paths."
+    },
+    "CS005": {
+      "correctIndex": 0,
+      "explanation": "+13 in 8-bit binary is 00001101. Inverting bits gives 11110010 (1's complement), and adding 1 yields 11110011."
+    },
+    "CS006": {
+      "correctIndex": 0,
+      "explanation": "Root is A. Left subtree inorder [D, B, E] with root B gives postorder [D, E, B]. Right subtree inorder [F, C] with root C gives [F, C]. Combined postorder: [D, E, B, F, C, A]."
+    },
+    "CS007": {
+      "correctIndex": 2,
+      "explanation": "Coffman's four deadlock conditions are Mutual Exclusion, Hold and Wait, No Preemption, and Circular Wait. 'Preemption' prevents deadlock."
+    },
+    "CS008": {
+      "correctIndex": 1,
+      "explanation": "A /26 subnet leaves 32 - 26 = 6 host bits, providing 2^6 - 2 = 64 - 2 = 62 usable host IP addresses."
+    },
+    "CS009": {
+      "correctIndex": 1,
+      "explanation": "In `range(5)`, the odd numbers are 1 and 3. Squaring them produces `[1, 9]`."
+    },
+    "CS010": {
+      "correctIndex": 1,
+      "explanation": "The HAVING clause filters grouped rows after aggregation, whereas WHERE filters individual rows prior to grouping."
+    },
+    "CS011": {
+      "correctIndex": 0,
+      "explanation": "McCabe's cyclomatic complexity formula for a control flow graph is V(G) = E - N + 2P."
+    },
+    "CS012": {
+      "correctIndex": 1,
+      "explanation": "Deterministic Pushdown Automata (DPDA) recognize Deterministic Context-Free Languages (DCFL), which are a proper subset of all Context-Free Languages."
+    },
+    "CS013": {
+      "correctIndex": 1,
+      "explanation": "Runtime polymorphism (late binding) in C++ is implemented via virtual functions dispatched through a vtable using base class pointers or references."
+    },
+    "CS014": {
+      "correctIndex": 1,
+      "explanation": "A minimum of four 2-input NAND gates is required to construct a 2-input XOR gate."
+    },
+    "CS015": {
+      "correctIndex": 1,
+      "explanation": "Insertion Sort and Bubble Sort with an early-termination swap flag achieve O(n) best-case time complexity on an already sorted array."
+    },
+    "CS016": {
+      "correctIndex": 0,
+      "explanation": "EMAT = Hit Ratio × Cache Time + (1 - Hit Ratio) × Miss Penalty Time = 0.90 × 10 + 0.10 × 100 = 9 + 10 = 19 ns."
+    },
+    "CS017": {
+      "correctIndex": 1,
+      "explanation": "HTTP 403 Forbidden means the server understood the request, but refuses to authorize it regardless of authentication."
+    },
+    "CS018": {
+      "correctIndex": 1,
+      "explanation": "TCP (Transmission Control Protocol) is connection-oriented and establishes sessions using a three-way handshake (SYN, SYN-ACK, ACK)."
+    },
+    "CS019": {
+      "correctIndex": 3,
+      "explanation": "Durability guarantees that committed transaction updates survive subsequent system failures using write-ahead logging and non-volatile storage."
+    },
+    "CS020": {
+      "correctIndex": 0,
+      "explanation": "SJF order: P2 (2ms, waits 0ms) -> P3 (4ms, waits 2ms) -> P1 (6ms, waits 6ms). Average waiting time = (0 + 2 + 6) / 3 = 8 / 3 = 2.67 ms."
+    },
+    "CS021": {
+      "correctIndex": 1,
+      "explanation": "In a 0-indexed binary heap array, the left child of index i is at 2i + 1 and the right child is at 2i + 2."
+    },
+    "CS022": {
+      "correctIndex": 1,
+      "explanation": "SQL Injection (SQLi) occurs when untrusted user input is directly concatenated into dynamic SQL statements without prepared statements."
+    },
+    "CS023": {
+      "correctIndex": 1,
+      "explanation": "The Syntax Analyzer (Parser) consumes tokens from the lexer and verifies grammatical structure by building a parse tree or AST."
+    },
+    "CS024": {
+      "correctIndex": 3,
+      "explanation": "When both J = 1 and K = 1, the JK flip-flop complements (toggles) its current output state Q(t+1) = Q'(t)."
+    },
+    "CS025": {
+      "correctIndex": 2,
+      "explanation": "Tuples are immutable sequences in Python and are hashable (valid dictionary keys) provided all their elements are also hashable."
+    },
+    "REA001": {
+      "correctIndex": 0,
+      "explanation": "Each letter is shifted forward by +1 position in the English alphabet: A->B, L->M, G->H, O->P, R->S, I->J, T->U, H->I, M->N (BMHPSJUIN)."
+    },
+    "REA002": {
+      "correctIndex": 2,
+      "explanation": "The pattern is ×2 + 1: 7×2+1=15, 15×2+1=31, 31×2+1=63, 63×2+1=127, 127×2+1=255."
+    },
+    "REA003": {
+      "correctIndex": 3,
+      "explanation": "From 'All processors are circuits' and 'Some circuits are registers', there is no definite overlap between processors and registers, nor are all registers circuits."
+    },
+    "REA004": {
+      "correctIndex": 0,
+      "explanation": "The only son of Rohan's grandfather is Rohan's father. The daughter of Rohan's father is Rohan's sister."
+    },
+    "REA005": {
+      "correctIndex": 1,
+      "explanation": "Net northward displacement = 10 - 2 = 8 km; eastward displacement = 6 km. Distance = √(8² + 6²) = √(64 + 36) = 10 km."
+    },
+    "REA006": {
+      "correctIndex": 2,
+      "explanation": "The pattern is n : n² + 1. Since 12² + 1 = 145, for 15 we have 15² + 1 = 225 + 1 = 226."
+    },
+    "REA007": {
+      "correctIndex": 0,
+      "explanation": "From left to right facing North, the seating order is P - T - S - Q - R. Therefore, S is sitting in the middle."
+    },
+    "REA008": {
+      "correctIndex": 3,
+      "explanation": "BDFH, JLNP, and SUWY follow a uniform +2, +2, +2 letter gap, whereas MOQT has +2, +2, +3."
+    },
+    "REA009": {
+      "correctIndex": 1,
+      "explanation": "Position from right end = Total - Left position + 1 = 45 - 18 + 1 = 28th."
+    },
+    "REA010": {
+      "correctIndex": 1,
+      "explanation": "At 3:30, angle = |30(3) - 5.5(30)| = |90 - 165| = 75°. The reflex angle is 360° - 75° = 285°."
+    },
+    "MAT001": {
+      "correctIndex": 0,
+      "explanation": "Net % change = +20 - 15 + (20 × -15)/100 = 5 - 3 = +2% (2% increase)."
+    },
+    "MAT002": {
+      "correctIndex": 0,
+      "explanation": "Combined rate = 1/12 + 1/18 = 5/36 per day. Time taken together = 36/5 = 7.2 days."
+    },
+    "MAT003": {
+      "correctIndex": 0,
+      "explanation": "Multiply A : B = 3 : 4 by 2 to match B = 8, giving A : B = 6 : 8. Thus A : B : C = 6 : 8 : 9."
+    },
+    "MAT004": {
+      "correctIndex": 1,
+      "explanation": "Total marks of 15 students = 15 × 68 = 1020. Excluding 96 leaves 924 for 14 students. New average = 924 / 14 = 66."
+    },
+    "MAT005": {
+      "correctIndex": 1,
+      "explanation": "Cost Price = 720 / 0.90 = Rs. 800. Selling price for 15% gain = 800 × 1.15 = Rs. 920."
+    },
+    "MAT006": {
+      "correctIndex": 1,
+      "explanation": "Amount = 10000 × (1.10)² = Rs. 12,100. Compound Interest = 12,100 - 10,000 = Rs. 2,100."
+    },
+    "MAT007": {
+      "correctIndex": 1,
+      "explanation": "Speed = 72 km/hr = 72 × (5/18) = 20 m/s. Time = 180 m / 20 m/s = 9 seconds."
+    },
+    "MAT008": {
+      "correctIndex": 1,
+      "explanation": "72 = 36 × 2, 108 = 36 × 3, 180 = 36 × 5. Hence the Highest Common Factor (HCF) is 36."
+    },
+    "MAT009": {
+      "correctIndex": 1,
+      "explanation": "Side of square = Diagonal / √2 = 12 cm. Perimeter = 4 × 12 = 48 cm."
+    },
+    "MAT010": {
+      "correctIndex": 0,
+      "explanation": "(256)^(0.16 + 0.09) = (256)^(0.25) = (4⁴)^(1/4) = 4."
+    }
+  }
+}

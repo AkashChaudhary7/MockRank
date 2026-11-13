@@ -1,0 +1,6 @@
+{
+  "name": "MockRank",
+  "description": "Real Aspirants. Real Mocks. Real Ranks. Production-ready DSSSB TGT Computer Science 21-Day Mock Test Platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,126 @@
+{
+  "subject": "general-awareness",
+  "version": 1,
+  "questions": [
+    {
+      "id": "GA001",
+      "topic": "Indian Polity",
+      "difficulty": "medium",
+      "question": "Which Article of the Constitution of India provides for the Right to Constitutional Remedies?",
+      "options": ["Article 19", "Article 21", "Article 32", "Article 44"],
+      "language": "en"
+    },
+    {
+      "id": "GA002",
+      "topic": "History",
+      "difficulty": "easy",
+      "question": "Who among the following founded the Satyashodhak Samaj in 1873?",
+      "options": ["Raja Ram Mohan Roy", "Jyotirao Phule", "Dayananda Saraswati", "Ishwar Chandra Vidyasagar"],
+      "language": "en"
+    },
+    {
+      "id": "GA003",
+      "topic": "Geography",
+      "difficulty": "medium",
+      "question": "The Duncan Passage separates which of the following island groups in India?",
+      "options": ["North Andaman and Middle Andaman", "South Andaman and Little Andaman", "Car Nicobar and Great Nicobar", "Minicoy and Lakshadweep"],
+      "language": "en"
+    },
+    {
+      "id": "GA004",
+      "topic": "Indian Economy",
+      "difficulty": "medium",
+      "question": "Which committee recommended the establishment of NABARD (National Bank for Agriculture and Rural Development)?",
+      "options": ["Narasimham Committee", "B. Sivaraman Committee", "Kelkar Committee", "Rangarajan Committee"],
+      "language": "en"
+    },
+    {
+      "id": "GA005",
+      "topic": "General Science",
+      "difficulty": "easy",
+      "question": "Which optical phenomenon is responsible for the twinkling of stars in the night sky?",
+      "options": ["Total Internal Reflection", "Atmospheric Refraction", "Dispersion of Light", "Tyndall Effect"],
+      "language": "en"
+    },
+    {
+      "id": "GA006",
+      "topic": "Indian Polity",
+      "difficulty": "hard",
+      "question": "By which Constitutional Amendment Act were Fundamental Duties incorporated into Part IVA of the Indian Constitution?",
+      "options": ["42nd Amendment Act, 1976", "44th Amendment Act, 1978", "73rd Amendment Act, 1992", "86th Amendment Act, 2002"],
+      "language": "en"
+    },
+    {
+      "id": "GA007",
+      "topic": "Delhi GK & Administration",
+      "difficulty": "medium",
+      "question": "Which Constitutional Amendment Act provided a Legislative Assembly and Council of Ministers for the National Capital Territory of Delhi?",
+      "options": ["61st Amendment Act", "69th Amendment Act", "74th Amendment Act", "91st Amendment Act"],
+      "language": "en"
+    },
+    {
+      "id": "GA008",
+      "topic": "Geography",
+      "difficulty": "medium",
+      "question": "Which river originates from the Rakas Lake near Mansarovar in Tibet and enters India through the Shipki La pass?",
+      "options": ["Ravi", "Beas", "Sutlej", "Chenab"],
+      "language": "en"
+    },
+    {
+      "id": "GA009",
+      "topic": "Science & Technology",
+      "difficulty": "medium",
+      "question": "What is the SI unit of magnetic flux density?",
+      "options": ["Weber", "Tesla", "Henry", "Farad"],
+      "language": "en"
+    },
+    {
+      "id": "GA010",
+      "topic": "History",
+      "difficulty": "hard",
+      "question": "Which rock edict of Emperor Ashoka provides a detailed account of the Kalinga War?",
+      "options": ["Major Rock Edict V", "Major Rock Edict VIII", "Major Rock Edict XI", "Major Rock Edict XIII"],
+      "language": "en"
+    },
+    {
+      "id": "GA011",
+      "topic": "Art & Culture",
+      "difficulty": "easy",
+      "question": "Sattriya is a classical dance form that originated in which Indian state?",
+      "options": ["Manipur", "Odisha", "Assam", "Kerala"],
+      "language": "en"
+    },
+    {
+      "id": "GA012",
+      "topic": "Environment",
+      "difficulty": "medium",
+      "question": "The Montreal Protocol (1987) is an international treaty designed primarily to:",
+      "options": ["Reduce greenhouse gas emissions", "Protect the ozone layer by phasing out ODS", "Regulate transboundary hazardous wastes", "Conserve wetland ecosystems"],
+      "language": "en"
+    },
+    {
+      "id": "GA013",
+      "topic": "Indian Economy",
+      "difficulty": "medium",
+      "question": "When the Reserve Bank of India reduces the Cash Reserve Ratio (CRR), what is the immediate impact on the banking system?",
+      "options": ["Money supply in the economy contracts", "Lending capacity of commercial banks increases", "Repo rate automatically increases", "Fiscal deficit increases immediately"],
+      "language": "en"
+    },
+    {
+      "id": "GA014",
+      "topic": "General Science",
+      "difficulty": "easy",
+      "question": "Which vitamin is water-soluble and essential for collagen synthesis in the human body?",
+      "options": ["Vitamin A", "Vitamin C", "Vitamin D", "Vitamin K"],
+      "language": "en"
+    },
+    {
+      "id": "GA015",
+      "topic": "Indian Polity",
+      "difficulty": "medium",
+      "question": "Who presides over a joint sitting of both Houses of the Parliament of India?",
+      "options": ["President of India", "Vice-President of India", "Speaker of the Lok Sabha", "Prime Minister of India"],
+      "language": "en"
+    }
+  ]
+}

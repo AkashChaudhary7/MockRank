@@ -1,0 +1,454 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Hardened Global Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(uid) {
+      return isVerifiedUser() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return isVerifiedUser() && (
+        request.auth.token.email == 'ictlabgsssaidana@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // 3. Entity Validation Blueprints (Anti-Update-Gap)
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+        'uid', 'fullName', 'email', 'registrationDate', 'accountStatus',
+        'premiumEntitlement', 'challengeEntitlement', 'mocksAttempted',
+        'averageScore', 'highestScore', 'latestScore', 'averageAccuracy', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'uid', 'fullName', 'username', 'email', 'photoURL', 'registrationDate', 'accountStatus',
+        'premiumEntitlement', 'challengeEntitlement', 'mocksAttempted',
+        'averageScore', 'highestScore', 'latestScore', 'averageAccuracy',
+        'partAAverageScore', 'partBAverageScore', 'sectionAverages',
+        'lastAttemptedMock', 'updatedAt'
+      ]) &&
+      data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 100 &&
+      (!('username' in data) || (data.username is string && data.username.size() <= 60)) &&
+      data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+      (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500)) &&
+      data.registrationDate is string && data.registrationDate.size() >= 1 && data.registrationDate.size() <= 40 &&
+      (data.accountStatus == 'active' || data.accountStatus == 'suspended') &&
+      data.premiumEntitlement is bool &&
+      data.challengeEntitlement is bool &&
+      data.mocksAttempted is number && data.mocksAttempted >= 0 && data.mocksAttempted <= 100 &&
+      data.averageScore is number && data.averageScore >= -100 && data.averageScore <= 200 &&
+      data.highestScore is number && data.highestScore >= -100 && data.highestScore <= 200 &&
+      data.latestScore is number && data.latestScore >= -100 && data.latestScore <= 200 &&
+      data.averageAccuracy is number && data.averageAccuracy >= 0 && data.averageAccuracy <= 100 &&
+      (!('partAAverageScore' in data) || (data.partAAverageScore is number && data.partAAverageScore >= -100 && data.partAAverageScore <= 200)) &&
+      (!('partBAverageScore' in data) || (data.partBAverageScore is number && data.partBAverageScore >= -100 && data.partBAverageScore <= 200)) &&
+      (!('sectionAverages' in data) || (data.sectionAverages is map && data.sectionAverages.size() <= 10)) &&
+      (!('lastAttemptedMock' in data) || (data.lastAttemptedMock is string && data.lastAttemptedMock.size() <= 32)) &&
+      data.updatedAt == request.time;
+    }
+
+    function isValidMockPaperDocument(data) {
+      return data.keys().hasAll([
+        'mockId', 'dayNumber', 'title', 'unlockDateIST', 'version',
+        'questionsJson', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'mockId', 'dayNumber', 'title', 'category', 'unlockDateIST', 'durationMinutes',
+        'correctMarks', 'incorrectMarks', 'totalQuestions', 'questionCount',
+        'version', 'sourceFormat', 'questionsJson', 'updatedAt'
+      ]) &&
+      data.mockId is string && data.mockId.size() >= 1 && data.mockId.size() <= 32 && data.mockId.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.dayNumber is number && data.dayNumber >= 1 && data.dayNumber <= 100 &&
+      data.title is string && data.title.size() >= 1 && data.title.size() <= 140 &&
+      (!('category' in data) || (data.category is string && data.category.size() <= 80)) &&
+      data.unlockDateIST is string && data.unlockDateIST.size() >= 8 && data.unlockDateIST.size() <= 20 &&
+      (!('durationMinutes' in data) || (data.durationMinutes is number && data.durationMinutes >= 5 && data.durationMinutes <= 300)) &&
+      (!('correctMarks' in data) || (data.correctMarks is number && data.correctMarks > 0 && data.correctMarks <= 10)) &&
+      (!('incorrectMarks' in data) || (data.incorrectMarks is number && data.incorrectMarks >= -10 && data.incorrectMarks <= 0)) &&
+      (!('totalQuestions' in data) || (data.totalQuestions is number && data.totalQuestions >= 1 && data.totalQuestions <= 250)) &&
+      (!('questionCount' in data) || (data.questionCount is number && data.questionCount >= 1 && data.questionCount <= 250)) &&
+      (!('sourceFormat' in data) || (data.sourceFormat == 'json' || data.sourceFormat == 'html')) &&
+      data.version is number && data.version >= 1 &&
+      data.questionsJson is string && data.questionsJson.size() >= 2 && data.questionsJson.size() <= 900000 &&
+      data.updatedAt == request.time;
+    }
+
+    function isValidLeaderboardOverallEntry(data) {
+      return data.keys().hasAll([
+        'uid', 'candidateName', 'averageScore', 'mocksAttempted',
+        'bestScore', 'latestScore', 'averageAccuracy', 'lastSubmissionAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'uid', 'candidateName', 'averageScore', 'mocksAttempted',
+        'bestScore', 'latestScore', 'averageAccuracy',
+        'partAAverageScore', 'partBAverageScore', 'sectionAverages',
+        'lastSubmissionAt', 'updatedAt'
+      ]) &&
+      data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.candidateName is string && data.candidateName.size() >= 1 && data.candidateName.size() <= 100 &&
+      data.averageScore is number && data.averageScore >= -100 && data.averageScore <= 200 &&
+      data.mocksAttempted is number && data.mocksAttempted >= 1 && data.mocksAttempted <= 100 &&
+      data.bestScore is number && data.bestScore >= -100 && data.bestScore <= 200 &&
+      data.latestScore is number && data.latestScore >= -100 && data.latestScore <= 200 &&
+      data.averageAccuracy is number && data.averageAccuracy >= 0 && data.averageAccuracy <= 100 &&
+      (!('partAAverageScore' in data) || (data.partAAverageScore is number && data.partAAverageScore >= -100 && data.partAAverageScore <= 200)) &&
+      (!('partBAverageScore' in data) || (data.partBAverageScore is number && data.partBAverageScore >= -100 && data.partBAverageScore <= 200)) &&
+      (!('sectionAverages' in data) || (data.sectionAverages is map && data.sectionAverages.size() <= 10)) &&
+      data.lastSubmissionAt is string && data.lastSubmissionAt.size() >= 1 && data.lastSubmissionAt.size() <= 40 &&
+      data.updatedAt == request.time;
+    }
+
+    function isValidLeaderboardMockEntry(data) {
+      return data.keys().hasAll([
+        'uid', 'mockId', 'candidateName', 'score', 'correctAnswers',
+        'incorrectAnswers', 'unattemptedQuestions', 'accuracy',
+        'timeTakenSeconds', 'submittedAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'uid', 'mockId', 'candidateName', 'score', 'correctAnswers',
+        'incorrectAnswers', 'unattemptedQuestions', 'accuracy',
+        'timeTakenSeconds', 'submittedAt', 'updatedAt'
+      ]) &&
+      data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.mockId is string && data.mockId.size() >= 1 && data.mockId.size() <= 32 && data.mockId.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.candidateName is string && data.candidateName.size() >= 1 && data.candidateName.size() <= 100 &&
+      data.score is number && data.score >= -100 && data.score <= 200 &&
+      data.correctAnswers is number && data.correctAnswers >= 0 && data.correctAnswers <= 200 &&
+      data.incorrectAnswers is number && data.incorrectAnswers >= 0 && data.incorrectAnswers <= 200 &&
+      data.unattemptedQuestions is number && data.unattemptedQuestions >= 0 && data.unattemptedQuestions <= 200 &&
+      data.accuracy is number && data.accuracy >= 0 && data.accuracy <= 100 &&
+      data.timeTakenSeconds is number && data.timeTakenSeconds >= 0 && data.timeTakenSeconds <= 10800 &&
+      data.submittedAt is string && data.submittedAt.size() >= 1 && data.submittedAt.size() <= 40 &&
+      data.updatedAt == request.time;
+    }
+
+    function isValidExamAttempt(data) {
+      return data.keys().hasAll([
+        'attemptId', 'uid', 'mockId', 'dayNumber', 'status',
+        'startedAt', 'expiresAt', 'lastHeartbeatAt', 'responses',
+        'markedForReview', 'score', 'correctAnswers', 'incorrectAnswers',
+        'unattemptedQuestions', 'accuracy', 'timeTakenSeconds',
+        'questionBankVersion', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'attemptId', 'uid', 'mockId', 'dayNumber', 'status',
+        'startedAt', 'expiresAt', 'lastHeartbeatAt', 'submittedAt',
+        'responses', 'markedForReview', 'score', 'partAScore', 'partBScore',
+        'correctAnswers', 'incorrectAnswers', 'unattemptedQuestions', 'accuracy',
+        'timeTakenSeconds', 'sectionScores', 'questionBankVersion', 'updatedAt'
+      ]) &&
+      data.attemptId is string && data.attemptId.size() >= 1 && data.attemptId.size() <= 128 && data.attemptId.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.mockId is string && data.mockId.size() >= 1 && data.mockId.size() <= 32 && data.mockId.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.dayNumber is number && data.dayNumber >= 1 && data.dayNumber <= 100 &&
+      (data.status == 'in-progress' || data.status == 'completed' || data.status == 'invalidated') &&
+      data.startedAt is string && data.startedAt.size() >= 1 && data.startedAt.size() <= 40 &&
+      data.expiresAt is string && data.expiresAt.size() >= 1 && data.expiresAt.size() <= 40 &&
+      data.lastHeartbeatAt is string && data.lastHeartbeatAt.size() >= 1 && data.lastHeartbeatAt.size() <= 40 &&
+      (!('submittedAt' in data) || (data.submittedAt is string && data.submittedAt.size() <= 40)) &&
+      data.responses is map && data.responses.size() <= 250 &&
+      data.markedForReview is list && data.markedForReview.size() <= 250 &&
+      (data.markedForReview.size() == 0 || (data.markedForReview[0] is string && data.markedForReview[0].size() <= 32)) &&
+      data.score is number && data.score >= -100 && data.score <= 200 &&
+      (!('partAScore' in data) || (data.partAScore is number && data.partAScore >= -100 && data.partAScore <= 200)) &&
+      (!('partBScore' in data) || (data.partBScore is number && data.partBScore >= -100 && data.partBScore <= 200)) &&
+      data.correctAnswers is number && data.correctAnswers >= 0 && data.correctAnswers <= 200 &&
+      data.incorrectAnswers is number && data.incorrectAnswers >= 0 && data.incorrectAnswers <= 200 &&
+      data.unattemptedQuestions is number && data.unattemptedQuestions >= 0 && data.unattemptedQuestions <= 200 &&
+      data.accuracy is number && data.accuracy >= 0 && data.accuracy <= 100 &&
+      data.timeTakenSeconds is number && data.timeTakenSeconds >= 0 && data.timeTakenSeconds <= 10800 &&
+      (!('sectionScores' in data) || (data.sectionScores is map && data.sectionScores.size() <= 10)) &&
+      data.questionBankVersion is number && data.questionBankVersion >= 1 &&
+      data.updatedAt == request.time;
+    }
+
+    function isValidChallengeConfig(data) {
+      return data.keys().hasAll([
+        'configId', 'startDateIST', 'endDateIST', 'isPaused',
+        'minEligibilityAttempts', 'lateAttemptPolicy',
+        'defaultCorrectMarks', 'defaultIncorrectMarks',
+        'delayedAnswerRelease', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'configId', 'startDateIST', 'endDateIST', 'isPaused',
+        'minEligibilityAttempts', 'lateAttemptPolicy',
+        'defaultCorrectMarks', 'defaultIncorrectMarks',
+        'delayedAnswerRelease', 'updatedAt'
+      ]) &&
+      data.configId is string && data.configId.size() >= 1 && data.configId.size() <= 32 && data.configId.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.startDateIST is string && data.startDateIST.size() >= 8 && data.startDateIST.size() <= 20 &&
+      data.endDateIST is string && data.endDateIST.size() >= 8 && data.endDateIST.size() <= 20 &&
+      data.isPaused is bool &&
+      data.minEligibilityAttempts is number && data.minEligibilityAttempts >= 1 && data.minEligibilityAttempts <= 100 &&
+      (data.lateAttemptPolicy == 'allow-unlocked' || data.lateAttemptPolicy == 'strict-daily') &&
+      data.defaultCorrectMarks is number && data.defaultCorrectMarks > 0 && data.defaultCorrectMarks <= 10 &&
+      data.defaultIncorrectMarks is number && data.defaultIncorrectMarks >= -10 && data.defaultIncorrectMarks <= 0 &&
+      data.delayedAnswerRelease is bool &&
+      data.updatedAt == request.time;
+    }
+
+    function isValidMockConfig(data) {
+      return data.keys().hasAll([
+        'mockId', 'dayNumber', 'title', 'enabled', 'durationMinutes',
+        'totalQuestions', 'correctMarks', 'incorrectMarks', 'maxMarks',
+        'answerReleasePolicy', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'mockId', 'dayNumber', 'title', 'category', 'unlockDateIST', 'enabled',
+        'durationMinutes', 'totalQuestions', 'correctMarks', 'incorrectMarks',
+        'maxMarks', 'answerReleasePolicy', 'updatedAt'
+      ]) &&
+      data.mockId is string && data.mockId.size() >= 1 && data.mockId.size() <= 32 && data.mockId.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.dayNumber is number && data.dayNumber >= 1 && data.dayNumber <= 100 &&
+      data.title is string && data.title.size() >= 1 && data.title.size() <= 140 &&
+      (!('category' in data) || (data.category is string && data.category.size() <= 80)) &&
+      (!('unlockDateIST' in data) || (data.unlockDateIST is string && data.unlockDateIST.size() >= 8 && data.unlockDateIST.size() <= 20)) &&
+      data.enabled is bool &&
+      data.durationMinutes is number && data.durationMinutes >= 5 && data.durationMinutes <= 300 &&
+      data.totalQuestions is number && data.totalQuestions >= 5 && data.totalQuestions <= 200 &&
+      data.correctMarks is number && data.correctMarks > 0 && data.correctMarks <= 10 &&
+      data.incorrectMarks is number && data.incorrectMarks >= -10 && data.incorrectMarks <= 0 &&
+      data.maxMarks is number && data.maxMarks > 0 && data.maxMarks <= 1000 &&
+      (data.answerReleasePolicy == 'after-submission' || data.answerReleasePolicy == 'after-challenge' || data.answerReleasePolicy == 'manual') &&
+      data.updatedAt == request.time;
+    }
+
+    function isValidAdminAuditEvent(data) {
+      return data.keys().hasAll([
+        'eventId', 'adminUid', 'adminEmail', 'action', 'reason', 'createdAt'
+      ]) &&
+      data.keys().hasOnly([
+        'eventId', 'adminUid', 'adminEmail', 'action', 'targetUid', 'targetMockId', 'reason', 'createdAt'
+      ]) &&
+      data.eventId is string && data.eventId.size() >= 1 && data.eventId.size() <= 128 && data.eventId.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.adminUid is string && data.adminUid.size() >= 1 && data.adminUid.size() <= 128 && data.adminUid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.adminEmail is string && data.adminEmail.size() >= 3 && data.adminEmail.size() <= 254 &&
+      data.action is string && data.action.size() >= 1 && data.action.size() <= 100 &&
+      (!('targetUid' in data) || (data.targetUid is string && data.targetUid.size() <= 128)) &&
+      (!('targetMockId' in data) || (data.targetMockId is string && data.targetMockId.size() <= 32)) &&
+      data.reason is string && data.reason.size() >= 1 && data.reason.size() <= 500 &&
+      data.createdAt == request.time;
+    }
+
+    function isValidAdminRole(data) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt']) &&
+      data.keys().hasOnly(['uid', 'email', 'role', 'createdAt']) &&
+      data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+      (!('role' in data) || (data.role is string && data.role.size() <= 40)) &&
+      data.createdAt == request.time;
+    }
+
+    // 4. Collection Match Blocks
+
+    // Private User Profiles (PII Isolated to Owner or Admin)
+    match /users/{uid} {
+      allow get: if isSignedIn() && isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() && isValidId(uid) && isValidUserProfile(incoming()) && (
+        (isOwner(uid) && incoming().uid == request.auth.uid && incoming().accountStatus == 'active') ||
+        isAdmin()
+      );
+
+      allow update: if isSignedIn() && isValidId(uid) && isValidUserProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().registrationDate == existing().registrationDate && (
+          isAdmin() ||
+          (isOwner(uid) &&
+            incoming().accountStatus == existing().accountStatus &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'username', 'photoURL', 'updatedAt'])) ||
+          (isOwner(uid) &&
+            incoming().accountStatus == existing().accountStatus &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'mocksAttempted', 'averageScore', 'highestScore', 'latestScore',
+              'averageAccuracy', 'partAAverageScore', 'partBAverageScore',
+              'sectionAverages', 'lastAttemptedMock', 'updatedAt'
+            ]))
+        );
+
+      allow delete: if isSignedIn() && isValidId(uid) && (isOwner(uid) || isAdmin());
+    }
+
+    // 1-Read / 1-Write 200-Question Mock Paper Documents
+    match /mock_papers/{mockId} {
+      allow get: if isSignedIn() && isValidId(mockId);
+      allow list: if isSignedIn() && resource.data.dayNumber >= 1;
+      allow create: if isSignedIn() && isValidId(mockId) && isValidMockPaperDocument(incoming()) &&
+        incoming().mockId == mockId && isAdmin();
+      allow update: if isSignedIn() && isValidId(mockId) && isValidMockPaperDocument(incoming()) &&
+        incoming().mockId == existing().mockId && isAdmin() &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'dayNumber', 'title', 'category', 'unlockDateIST', 'durationMinutes', 'correctMarks',
+          'incorrectMarks', 'totalQuestions', 'questionCount', 'version',
+          'sourceFormat', 'questionsJson', 'updatedAt'
+        ]);
+      allow delete: if isSignedIn() && isValidId(mockId) && isAdmin();
+    }
+
+    // Public Overall Leaderboard (No PII)
+    match /leaderboard_overall/{uid} {
+      allow get: if isSignedIn() && isValidId(uid);
+      allow list: if isSignedIn() && resource.data.mocksAttempted >= 1;
+
+      allow create: if isSignedIn() && isValidId(uid) && isValidLeaderboardOverallEntry(incoming()) && (
+        (isOwner(uid) && incoming().uid == request.auth.uid && exists(/databases/$(database)/documents/users/$(uid))) ||
+        isAdmin()
+      );
+
+      allow update: if isSignedIn() && isValidId(uid) && isValidLeaderboardOverallEntry(incoming()) &&
+        incoming().uid == existing().uid && (
+          isAdmin() ||
+          (isOwner(uid) && incoming().diff(existing()).affectedKeys().hasOnly([
+            'candidateName', 'averageScore', 'mocksAttempted', 'bestScore',
+            'latestScore', 'averageAccuracy', 'partAAverageScore', 'partBAverageScore',
+            'sectionAverages', 'lastSubmissionAt', 'updatedAt'
+          ]))
+        );
+
+      allow delete: if isSignedIn() && isValidId(uid) && isAdmin();
+    }
+
+    // Public Individual Mock Leaderboard (No PII)
+    match /leaderboard_mocks/{mockId}/entries/{uid} {
+      allow get: if isSignedIn() && isValidId(mockId) && isValidId(uid);
+      allow list: if isSignedIn() && resource.data.timeTakenSeconds >= 0;
+
+      allow create: if isSignedIn() && isValidId(mockId) && isValidId(uid) &&
+        isValidLeaderboardMockEntry(incoming()) && (
+          (isOwner(uid) && incoming().uid == request.auth.uid && incoming().mockId == mockId &&
+            exists(/databases/$(database)/documents/users/$(uid))) ||
+          isAdmin()
+        );
+
+      allow update: if isSignedIn() && isValidId(mockId) && isValidId(uid) &&
+        isValidLeaderboardMockEntry(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().mockId == existing().mockId && (
+          isAdmin() ||
+          (isOwner(uid) && incoming().diff(existing()).affectedKeys().hasOnly([
+            'candidateName', 'score', 'correctAnswers', 'incorrectAnswers',
+            'unattemptedQuestions', 'accuracy', 'timeTakenSeconds', 'submittedAt', 'updatedAt'
+          ]))
+        );
+
+      allow delete: if isSignedIn() && isValidId(mockId) && isValidId(uid) && isAdmin();
+    }
+
+    // Candidate Exam Attempts (Terminal State Locked once completed or invalidated)
+    match /attempts/{attemptId} {
+      allow get: if isSignedIn() && isValidId(attemptId) && (resource.data.uid == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() && isValidId(attemptId) && isValidExamAttempt(incoming()) &&
+        isOwner(incoming().uid) &&
+        incoming().attemptId == attemptId &&
+        incoming().status == 'in-progress' &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid));
+
+      allow update: if isSignedIn() && isValidId(attemptId) && isValidExamAttempt(incoming()) &&
+        incoming().attemptId == existing().attemptId &&
+        incoming().uid == existing().uid &&
+        incoming().mockId == existing().mockId &&
+        incoming().startedAt == existing().startedAt && (
+          isAdmin() ||
+          (isOwner(existing().uid) &&
+            existing().status == 'in-progress' &&
+            incoming().status == 'in-progress' &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'responses', 'markedForReview', 'lastHeartbeatAt', 'timeTakenSeconds', 'updatedAt'
+            ])) ||
+          (isOwner(existing().uid) &&
+            existing().status == 'in-progress' &&
+            incoming().status == 'completed' &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'submittedAt', 'lastHeartbeatAt', 'responses', 'markedForReview',
+              'score', 'partAScore', 'partBScore', 'correctAnswers', 'incorrectAnswers',
+              'unattemptedQuestions', 'accuracy', 'timeTakenSeconds', 'sectionScores', 'updatedAt'
+            ]))
+        );
+
+      allow delete: if isSignedIn() && isValidId(attemptId) && isAdmin();
+    }
+
+    // Global Mock Series Config
+    match /challenge_config/{configId} {
+      allow get: if isSignedIn() && isValidId(configId);
+      allow list: if isSignedIn() && resource.data.minEligibilityAttempts >= 1;
+      allow create: if isSignedIn() && isValidId(configId) && isValidChallengeConfig(incoming()) && isAdmin();
+      allow update: if isSignedIn() && isValidId(configId) && isValidChallengeConfig(incoming()) &&
+        incoming().configId == existing().configId && isAdmin() &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'startDateIST', 'endDateIST', 'isPaused', 'minEligibilityAttempts',
+          'lateAttemptPolicy', 'defaultCorrectMarks', 'defaultIncorrectMarks',
+          'delayedAnswerRelease', 'updatedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    // Per-Mock Configurations (Admin-managed mocks & categories)
+    match /mock_configs/{mockId} {
+      allow get: if isSignedIn() && isValidId(mockId);
+      allow list: if isSignedIn() && resource.data.dayNumber >= 1;
+      allow create: if isSignedIn() && isValidId(mockId) && isValidMockConfig(incoming()) && isAdmin();
+      allow update: if isSignedIn() && isValidId(mockId) && isValidMockConfig(incoming()) &&
+        incoming().mockId == existing().mockId && isAdmin() &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'dayNumber', 'title', 'category', 'unlockDateIST', 'enabled', 'durationMinutes', 'totalQuestions',
+          'correctMarks', 'incorrectMarks', 'maxMarks', 'answerReleasePolicy', 'updatedAt'
+        ]);
+      allow delete: if isSignedIn() && isValidId(mockId) && isAdmin();
+    }
+
+    // Immutable Admin Audit Log
+    match /admin_audit/{eventId} {
+      allow get: if isSignedIn() && isValidId(eventId) && isAdmin();
+      allow list: if isSignedIn() && isAdmin() && resource.data.adminUid != '';
+      allow create: if isSignedIn() && isValidId(eventId) && isValidAdminAuditEvent(incoming()) &&
+        incoming().eventId == eventId &&
+        incoming().adminUid == request.auth.uid &&
+        isAdmin();
+      allow update, delete: if false;
+    }
+
+    // Admin Role Directory (Allows password-verified admin session registration & refresh)
+    match /admins/{adminUid} {
+      allow get: if isSignedIn() && isValidId(adminUid) && (request.auth.uid == adminUid || isAdmin());
+      allow list: if isSignedIn() && isAdmin() && resource.data.uid != '';
+      allow create: if isSignedIn() && isValidId(adminUid) && isValidAdminRole(incoming()) &&
+        incoming().uid == adminUid && (isOwner(adminUid) || isAdmin());
+      allow update: if isSignedIn() && isValidId(adminUid) && isValidAdminRole(incoming()) &&
+        incoming().uid == existing().uid && (isOwner(adminUid) || isAdmin()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['email', 'role', 'createdAt']);
+      allow delete: if isSignedIn() && isValidId(adminUid) && isAdmin();
+    }
+  }
+}

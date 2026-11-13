@@ -1,0 +1,136 @@
+{
+  "subject": "reasoning",
+  "version": 1,
+  "questions": [
+    {
+      "id": "REA001",
+      "topic": "Series & Coding-Decoding",
+      "difficulty": "easy",
+      "question": "If in a certain code language, 'COMPILER' is written as 'DPNQJMFS', how will 'ALGORITHM' be written in that code language?",
+      "options": [
+        "BMHPSJUIN",
+        "BMHPSJUIH",
+        "BMHPTJUIN",
+        "CNHPSJUIN"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "REA002",
+      "topic": "Number Series",
+      "difficulty": "easy",
+      "question": "Find the missing number in the series: 7, 15, 31, 63, 127, ?",
+      "options": [
+        "253",
+        "254",
+        "255",
+        "256"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "REA003",
+      "topic": "Syllogism",
+      "difficulty": "medium",
+      "question": "Statements: All processors are circuits. Some circuits are registers. Conclusions: I. Some processors are registers. II. All registers are circuits.",
+      "options": [
+        "Only Conclusion I follows",
+        "Only Conclusion II follows",
+        "Both I and II follow",
+        "Neither I nor II follows"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "REA004",
+      "topic": "Blood Relations",
+      "difficulty": "medium",
+      "question": "Pointing to a photograph, Rohan said, 'She is the daughter of the only son of my grandfather.' How is the girl in the photograph related to Rohan?",
+      "options": [
+        "Sister",
+        "Cousin",
+        "Mother",
+        "Aunt"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "REA005",
+      "topic": "Direction Sense",
+      "difficulty": "easy",
+      "question": "A candidate walks 10 km North, turns right and walks 6 km, then turns right again and walks 2 km. How far is he from his starting point?",
+      "options": [
+        "8 km",
+        "10 km",
+        "12 km",
+        "14 km"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "REA006",
+      "topic": "Analogy",
+      "difficulty": "easy",
+      "question": "Select the related number from the given alternatives: 12 : 145 :: 15 : ?",
+      "options": [
+        "224",
+        "225",
+        "226",
+        "230"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "REA007",
+      "topic": "Seating Arrangement",
+      "difficulty": "medium",
+      "question": "Five teachers P, Q, R, S and T are sitting in a row facing North. S is between T and Q. Q is to the immediate left of R. P is to the immediate left of T. Who is sitting in the middle?",
+      "options": [
+        "S",
+        "T",
+        "Q",
+        "R"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "REA008",
+      "topic": "Odd One Out",
+      "difficulty": "easy",
+      "question": "Four letter-clusters have been given, out of which three are alike in some manner and one is different. Select the odd letter-cluster.",
+      "options": [
+        "BDFH",
+        "JLNP",
+        "SUWY",
+        "MOQT"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "REA009",
+      "topic": "Order & Ranking",
+      "difficulty": "medium",
+      "question": "In a row of 45 DSSSB aspirants, Priya is 18th from the left end. What is her position from the right end?",
+      "options": [
+        "27th",
+        "28th",
+        "29th",
+        "26th"
+      ],
+      "language": "en"
+    },
+    {
+      "id": "REA010",
+      "topic": "Clock & Calendar",
+      "difficulty": "hard",
+      "question": "What is the reflex angle between the hour hand and the minute hand of a clock at 3:30?",
+      "options": [
+        "75 degrees",
+        "285 degrees",
+        "270 degrees",
+        "295 degrees"
+      ],
+      "language": "en"
+    }
+  ]
+}
