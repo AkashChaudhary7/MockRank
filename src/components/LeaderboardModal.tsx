@@ -93,9 +93,9 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
               Mocks
             </button>
           </div>
-          <div className="flex items-center gap-2.5 pt-1">
-            <Trophy className="w-6 h-6 text-slate-900 dark:text-slate-100" />
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-950 dark:text-white">
+          <div className="flex items-center gap-2 pt-1">
+            <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-slate-900 dark:text-slate-100 shrink-0" />
+            <h1 className="text-xl sm:text-3xl font-bold text-slate-950 dark:text-white leading-snug">
               Live Competitive Leaderboard
             </h1>
           </div>
@@ -104,7 +104,7 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
         <button
           type="button"
           onClick={handleManualRefresh}
-          className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-lg cursor-pointer"
+          className="flex items-center gap-1.5 px-3 sm:px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-lg cursor-pointer"
         >
           <RefreshCw className="w-3.5 h-3.5" />
           <span>Refresh Standings</span>
@@ -112,12 +112,12 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
       </div>
 
       {/* Scope Selector Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 rounded-xl">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-3 p-3.5 sm:p-4 bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 rounded-xl">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 w-full sm:w-auto">
           <button
             type="button"
             onClick={() => setSelectedScope('overall')}
-            className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+            className={`w-full sm:w-auto px-3.5 py-2 sm:py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer text-center ${
               selectedScope === 'overall'
                 ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950'
                 : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -132,7 +132,7 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
               onChange={(e) => {
                 if (e.target.value) setSelectedScope(e.target.value);
               }}
-              className="px-3 py-1.5 text-xs font-medium bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md text-slate-800 dark:text-slate-200 cursor-pointer"
+              className="w-full sm:w-auto px-3 py-2 sm:py-1.5 text-xs font-medium bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md text-slate-800 dark:text-slate-200 cursor-pointer"
             >
               <option value="" disabled>
                 Select Individual Mock...
@@ -147,8 +147,10 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
         </div>
 
         {selectedScope === 'overall' && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 dark:text-slate-400">Compare Cohort:</span>
+          <div className="flex flex-col xs:flex-row xs:items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
+            <span className="text-xs text-slate-500 dark:text-slate-400 shrink-0">
+              Compare Cohort:
+            </span>
             <select
               value={cohortFilter}
               onChange={(e) => {
@@ -157,7 +159,7 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
                   val === 'my_cohort' || val === 'all' ? val : Number(val)
                 );
               }}
-              className="px-2.5 py-1.5 text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md text-slate-900 dark:text-slate-100 cursor-pointer"
+              className="w-full sm:w-auto px-2.5 py-2 sm:py-1.5 text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md text-slate-900 dark:text-slate-100 cursor-pointer"
             >
               <option value="my_cohort">
                 My Equal-Mock Cohort ({Math.max(1, currentUserMocksAttempted)} Mock

@@ -236,16 +236,16 @@ export const MockResultModal: React.FC<MockResultPageProps> = ({
               Dashboard
             </button>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-950 dark:text-white">
+          <h1 className="text-xl sm:text-3xl font-bold text-slate-950 dark:text-white leading-snug">
             {mockTitle} — Scorecard
           </h1>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="grid grid-cols-1 xs:grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
           <button
             type="button"
             onClick={handleShareScoreInTextFormat}
-            className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            className="flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
             {copiedScoreText ? (
               <>
@@ -255,7 +255,7 @@ export const MockResultModal: React.FC<MockResultPageProps> = ({
             ) : (
               <>
                 <Share2 className="w-3.5 h-3.5" />
-                <span>Share Mock Score (Text + Link)</span>
+                <span>Share Score (Text + Link)</span>
               </>
             )}
           </button>
@@ -263,18 +263,18 @@ export const MockResultModal: React.FC<MockResultPageProps> = ({
           <button
             type="button"
             onClick={() => onOpenLeaderboard(attempt.mockId)}
-            className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-white dark:text-slate-950 bg-slate-900 dark:bg-slate-100 hover:bg-slate-800 dark:hover:bg-white rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            className="flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white dark:text-slate-950 bg-slate-900 dark:bg-slate-100 hover:bg-slate-800 dark:hover:bg-white rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
             <Trophy className="w-3.5 h-3.5" />
-            <span>Open Leaderboard Page</span>
+            <span>Open Leaderboard</span>
           </button>
         </div>
       </div>
 
       {/* Shareable Text Format Box (With Direct Attempt Link Below) */}
       {showShareTextPreview && (
-        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 space-y-3">
-          <div className="flex items-center justify-between">
+        <div className="p-3.5 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-xs font-bold text-slate-900 dark:text-white">
               Shareable Mock Score in Text Format (Includes Attempt Link Below)
             </span>
@@ -307,80 +307,88 @@ export const MockResultModal: React.FC<MockResultPageProps> = ({
       )}
 
       {/* Section View Switcher */}
-      <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-900 border border-transparent dark:border-slate-800 rounded-lg w-fit">
+      <div className="grid grid-cols-2 sm:flex items-center gap-1.5 sm:gap-2 p-1 bg-slate-100 dark:bg-slate-900 border border-transparent dark:border-slate-800 rounded-lg w-full sm:w-fit">
         <button
           type="button"
           onClick={() => setActiveTab('summary')}
-          className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+          className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-4 py-2 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
             activeTab === 'summary'
               ? 'bg-white dark:bg-slate-800 text-slate-950 dark:text-white shadow-xs'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
-          <BarChart3 className="w-3.5 h-3.5" />
-          <span>Score, Part A/B &amp; Section Analysis</span>
+          <BarChart3 className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">Score &amp; Analysis</span>
         </button>
         <button
           type="button"
           onClick={() => setActiveTab('solutions')}
-          className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+          className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-4 py-2 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
             activeTab === 'solutions'
               ? 'bg-white dark:bg-slate-800 text-slate-950 dark:text-white shadow-xs'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
-          <BookOpen className="w-3.5 h-3.5" />
-          <span>Detailed Answer Key &amp; Solutions ({reviewItems.length})</span>
+          <BookOpen className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">Solutions ({reviewItems.length})</span>
         </button>
       </div>
 
       {activeTab === 'summary' ? (
-        <div className="space-y-8">
-          {/* Primary Metrics Grid */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-              <div className="text-xs text-slate-500 dark:text-slate-400">Official Total Score</div>
-              <div className="text-3xl font-bold font-mono text-slate-950 dark:text-white mt-1">
+        <div className="space-y-6 sm:space-y-8">
+          {/* Primary Metrics Grid (2x2 on Mobile) */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+            <div className="p-3.5 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+              <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+                Official Total Score
+              </div>
+              <div className="text-xl sm:text-3xl font-bold font-mono text-slate-950 dark:text-white mt-1">
                 {attempt.score.toFixed(2)}{' '}
-                <span className="text-sm font-normal text-slate-400 dark:text-slate-500">
+                <span className="text-xs sm:text-sm font-normal text-slate-400 dark:text-slate-500">
                   / {maxMarks.toFixed(0)}
                 </span>
               </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 font-mono">
+              <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">
                 Mock Avg: {avgParticipantScore.toFixed(2)}
               </div>
             </div>
 
-            <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-              <div className="text-xs text-slate-500 dark:text-slate-400">Part-Wise Breakdown</div>
-              <div className="text-xl font-bold font-mono text-slate-950 dark:text-white mt-1.5">
+            <div className="p-3.5 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+              <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+                Part-Wise Breakdown
+              </div>
+              <div className="text-base sm:text-xl font-bold font-mono text-slate-950 dark:text-white mt-1">
                 Part A: {partAScore.toFixed(2)}
               </div>
-              <div className="text-sm font-bold font-mono text-slate-800 dark:text-slate-200 mt-1">
-                Part B (CS + Teaching): {partBScore.toFixed(2)}
+              <div className="text-xs sm:text-sm font-bold font-mono text-slate-800 dark:text-slate-200 mt-1">
+                Part B: {partBScore.toFixed(2)}
               </div>
             </div>
 
-            <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-              <div className="text-xs text-slate-500 dark:text-slate-400">Rank in This Mock</div>
-              <div className="text-3xl font-bold font-mono text-slate-950 dark:text-white mt-1">
+            <div className="p-3.5 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+              <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+                Rank in This Mock
+              </div>
+              <div className="text-xl sm:text-3xl font-bold font-mono text-slate-950 dark:text-white mt-1">
                 #{myMockRank}{' '}
-                <span className="text-sm font-normal text-slate-400 dark:text-slate-500">
+                <span className="text-xs sm:text-sm font-normal text-slate-400 dark:text-slate-500">
                   of {totalParticipants}
                 </span>
               </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
-                Accuracy: {attempt.accuracy.toFixed(1)}% · {formatDuration(attempt.timeTakenSeconds)}
+              <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Acc: {attempt.accuracy.toFixed(1)}% · {formatDuration(attempt.timeTakenSeconds)}
               </div>
             </div>
 
-            <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-              <div className="text-xs text-slate-500 dark:text-slate-400">Personal Rank (Equal-Mocks Cohort)</div>
-              <div className="text-3xl font-bold font-mono text-slate-950 dark:text-white mt-1">
+            <div className="p-3.5 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+              <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+                Personal Rank (Equal Cohort)
+              </div>
+              <div className="text-xl sm:text-3xl font-bold font-mono text-slate-950 dark:text-white mt-1">
                 {overallRank ? `#${overallRank}` : '#1'}
               </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 font-mono">
-                Your Avg Score: {overallAverageScore.toFixed(2)}
+              <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">
+                Avg Score: {overallAverageScore.toFixed(2)}
               </div>
             </div>
           </div>

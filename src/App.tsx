@@ -847,28 +847,113 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
-      {/* Top Bar */}
-      <header className="flex items-center justify-between gap-4 sm:gap-8 px-4 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 z-30 transition-colors">
-        {/* Zone 1: Wordmark */}
-        <a
-          href="#top"
-          onClick={(e) => {
-            e.preventDefault();
-            setActiveNav('dashboard');
-          }}
-          className="text-xl font-bold tracking-tight text-slate-950 dark:text-white font-display whitespace-nowrap shrink-0"
-        >
-          MockRank
-        </a>
+      {/* Top Bar — Responsive Single Row on Desktop, 2-Row with Segmented Nav on Mobile */}
+      <header className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 z-30 transition-colors">
+        <div className="max-w-6xl mx-auto px-3.5 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 sm:gap-8">
+          {/* Zone 1: Wordmark */}
+          <a
+            href="#top"
+            onClick={(e) => {
+              e.preventDefault();
+              setActiveNav('dashboard');
+            }}
+            className="text-lg sm:text-xl font-bold tracking-tight text-slate-950 dark:text-white font-display whitespace-nowrap shrink-0"
+          >
+            MockRank
+          </a>
 
-        {/* Zone 2: Primary Full-Page Navigation Links */}
-        <nav className="flex items-center gap-4 sm:gap-6 text-sm font-medium text-slate-600 dark:text-slate-400">
+          {/* Zone 2: Desktop Primary Full-Page Navigation Links */}
+          <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600 dark:text-slate-400">
+            <button
+              type="button"
+              onClick={() => setActiveNav('dashboard')}
+              className={`py-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                activeNav === 'dashboard'
+                  ? 'text-slate-950 dark:text-white font-semibold border-b-2 border-slate-900 dark:border-white'
+                  : 'hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              Dashboard
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveNav('mocks')}
+              className={`py-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                activeNav === 'mocks'
+                  ? 'text-slate-950 dark:text-white font-semibold border-b-2 border-slate-900 dark:border-white'
+                  : 'hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              Mocks ({blueprints.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => openLeaderboardPage('overall')}
+              className={`py-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                activeNav === 'leaderboard'
+                  ? 'text-slate-950 dark:text-white font-semibold border-b-2 border-slate-900 dark:border-white'
+                  : 'hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              Leaderboard
+            </button>
+          </nav>
+
+          {/* Zone 3: Dark Mode Toggle & Primary Action */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setDarkMode((prev) => !prev)}
+              aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+              title={
+                darkMode
+                  ? 'Switch to Light Mode'
+                  : 'Switch to Dark Mode for late-night study sessions'
+              }
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              {darkMode ? (
+                <>
+                  <Sun className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Light</span>
+                </>
+              ) : (
+                <>
+                  <Moon className="w-3.5 h-3.5 text-slate-700 dark:text-slate-200" />
+                  <span>Dark</span>
+                </>
+              )}
+            </button>
+
+            {firebaseUser ? (
+              <button
+                type="button"
+                onClick={() => setActiveNav('mocks')}
+                className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs font-semibold text-white dark:text-slate-950 bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-slate-200 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                Attempt Mocks
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleGoogleSignIn}
+                disabled={authBusy}
+                className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs font-semibold text-white dark:text-slate-950 bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-slate-200 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                Login with Gmail
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Mobile Segmented Navigation Bar (< md) */}
+        <nav className="md:hidden grid grid-cols-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 text-xs font-medium text-slate-600 dark:text-slate-400">
           <button
             type="button"
             onClick={() => setActiveNav('dashboard')}
-            className={`py-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+            className={`py-2.5 text-center transition-colors cursor-pointer ${
               activeNav === 'dashboard'
-                ? 'text-slate-950 dark:text-white font-semibold border-b-2 border-slate-900 dark:border-white'
+                ? 'text-slate-950 dark:text-white font-bold border-b-2 border-slate-900 dark:border-white bg-white dark:bg-slate-900'
                 : 'hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
@@ -877,9 +962,9 @@ export default function App() {
           <button
             type="button"
             onClick={() => setActiveNav('mocks')}
-            className={`py-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+            className={`py-2.5 text-center transition-colors border-x border-slate-200/70 dark:border-slate-800/70 cursor-pointer ${
               activeNav === 'mocks'
-                ? 'text-slate-950 dark:text-white font-semibold border-b-2 border-slate-900 dark:border-white'
+                ? 'text-slate-950 dark:text-white font-bold border-b-2 border-b-slate-900 dark:border-b-white bg-white dark:bg-slate-900'
                 : 'hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
@@ -888,66 +973,20 @@ export default function App() {
           <button
             type="button"
             onClick={() => openLeaderboardPage('overall')}
-            className={`py-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+            className={`py-2.5 text-center transition-colors cursor-pointer ${
               activeNav === 'leaderboard'
-                ? 'text-slate-950 dark:text-white font-semibold border-b-2 border-slate-900 dark:border-white'
+                ? 'text-slate-950 dark:text-white font-bold border-b-2 border-slate-900 dark:border-white bg-white dark:bg-slate-900'
                 : 'hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
             Leaderboard
           </button>
         </nav>
-
-        {/* Zone 3: Dark Mode Toggle & Primary Action */}
-        <div className="flex items-center gap-2.5 shrink-0">
-          <button
-            type="button"
-            onClick={() => setDarkMode((prev) => !prev)}
-            aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-            title={
-              darkMode
-                ? 'Switch to Light Mode'
-                : 'Switch to Dark Mode for late-night study sessions'
-            }
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            {darkMode ? (
-              <>
-                <Sun className="w-3.5 h-3.5 text-amber-400" />
-                <span className="hidden sm:inline">Light</span>
-              </>
-            ) : (
-              <>
-                <Moon className="w-3.5 h-3.5 text-slate-700 dark:text-slate-200" />
-                <span className="hidden sm:inline">Dark</span>
-              </>
-            )}
-          </button>
-
-          {firebaseUser ? (
-            <button
-              type="button"
-              onClick={() => setActiveNav('mocks')}
-              className="px-4 py-2 text-xs font-semibold text-white dark:text-slate-950 bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-slate-200 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              Attempt Mocks
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={handleGoogleSignIn}
-              disabled={authBusy}
-              className="px-4 py-2 text-xs font-semibold text-white dark:text-slate-950 bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-slate-200 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              Login with Gmail
-            </button>
-          )}
-        </div>
       </header>
 
       {/* Notification Banner */}
       {bannerMessage && (
-        <div className="px-6 py-2.5 bg-slate-900 dark:bg-slate-800 text-white text-xs flex items-center justify-between gap-4 border-b border-slate-800 dark:border-slate-700">
+        <div className="px-4 sm:px-6 py-2.5 bg-slate-900 dark:bg-slate-800 text-white text-xs flex items-center justify-between gap-4 border-b border-slate-800 dark:border-slate-700">
           <span className="whitespace-pre-line">{bannerMessage}</span>
           <button
             type="button"
@@ -960,41 +999,47 @@ export default function App() {
       )}
 
       {/* Main Content Container */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8">
+      <main className="flex-1 max-w-6xl w-full mx-auto px-3.5 sm:px-6 py-5 sm:py-8">
         {!authReady ? (
           <div className="py-20 text-center text-sm text-slate-500 dark:text-slate-400">
             Initializing MockRank...
           </div>
         ) : !firebaseUser ? (
           /* Unauthenticated Portal: Clean Heading Without Extra Text Below */
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start py-6">
-            <div className="lg:col-span-7 space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-10 items-start py-2 sm:py-6">
+            <div className="lg:col-span-7 space-y-5 sm:space-y-6">
               <h1
-                className="text-3xl sm:text-4xl font-bold text-slate-950 dark:text-white tracking-tight leading-tight"
+                className="text-2xl sm:text-4xl font-bold text-slate-950 dark:text-white tracking-tight leading-tight"
                 style={{ textWrap: 'balance' }}
               >
                 Real Aspirants. Real Mocks. Real Ranks.
               </h1>
 
               {/* Key Platform Specifications */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-2">
-                <div className="p-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                  <div className="text-xs text-slate-500 dark:text-slate-400">Platform Access</div>
-                  <div className="text-2xl font-bold font-mono text-emerald-700 dark:text-emerald-400 mt-1">
+              <div className="grid grid-cols-3 gap-2.5 sm:gap-4 pt-1">
+                <div className="p-3 sm:p-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                  <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+                    Platform Access
+                  </div>
+                  <div className="text-base sm:text-2xl font-bold font-mono text-emerald-700 dark:text-emerald-400 mt-1">
                     100% Free
                   </div>
                 </div>
 
-                <div className="p-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                  <div className="text-xs text-slate-500 dark:text-slate-400">Exam Pattern</div>
-                  <div className="text-2xl font-bold font-mono text-slate-900 dark:text-white mt-1">
+                <div className="p-3 sm:p-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                  <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+                    Exam Pattern
+                  </div>
+                  <div className="text-base sm:text-2xl font-bold font-mono text-slate-900 dark:text-white mt-1">
                     DSSSB CBT
                   </div>
                 </div>
 
-                <div className="p-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 col-span-2 sm:col-span-1">
-                  <div className="text-xs text-slate-500 dark:text-slate-400">Cohort Ranking</div>
-                  <div className="text-2xl font-bold font-mono text-slate-900 dark:text-white mt-1">
+                <div className="p-3 sm:p-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                  <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+                    Cohort Ranking
+                  </div>
+                  <div className="text-base sm:text-2xl font-bold font-mono text-slate-900 dark:text-white mt-1">
                     Equal Mocks
                   </div>
                 </div>
@@ -1002,8 +1047,8 @@ export default function App() {
             </div>
 
             {/* Right Column: Gmail Sign-In Card (Works seamlessly on mock.dsssbpyq.online & all domains) */}
-            <div className="lg:col-span-5 p-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs space-y-4">
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+            <div className="lg:col-span-5 p-5 sm:p-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs space-y-4">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
                 Candidate Gmail Login
               </h2>
 
@@ -1117,143 +1162,143 @@ export default function App() {
           />
         ) : (
           /* Authenticated Student Views: Dashboard | Mocks */
-          <div className="space-y-8">
+          <div className="space-y-6 sm:space-y-8">
             {/* Sub-header Context Strip (No Admin Login button here — Admin Login is aligned below in Footer) */}
-            <div className="flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-slate-200 dark:border-slate-800">
-              <h1 className="text-2xl font-bold text-slate-950 dark:text-white">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-4 sm:pb-5 border-b border-slate-200 dark:border-slate-800">
+              <h1 className="text-lg sm:text-2xl font-bold text-slate-950 dark:text-white truncate max-w-[180px] sm:max-w-none">
                 {userProfile?.username
                   ? `@${userProfile.username}`
                   : userProfile?.fullName || 'Candidate'}
               </h1>
 
-              <div className="flex flex-wrap items-center gap-2.5">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => {
                     setUsernameInput(userProfile?.username || '');
                     setShowUsernameModal(true);
                   }}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg cursor-pointer"
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg cursor-pointer"
                 >
-                  <UserCheck className="w-3.5 h-3.5" />
-                  <span>
-                    {userProfile?.username ? `Username: ${userProfile.username}` : 'Set Username'}
+                  <UserCheck className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate max-w-[130px] sm:max-w-none">
+                    {userProfile?.username ? `${userProfile.username}` : 'Set Username'}
                   </span>
                 </button>
 
                 <button
                   type="button"
                   onClick={handleSignOut}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-700 rounded-lg cursor-pointer"
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-700 rounded-lg cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5" />
-                  <span>Sign Out</span>
+                  <span className="hidden xs:inline">Sign Out</span>
                 </button>
               </div>
             </div>
 
             {activeNav === 'dashboard' && (
-              <div className="space-y-8">
-                {/* Top Row: Personal Rank (Equal-Mocks Cohort) + Average Score + Part A & Part B Average Scores */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                    <div className="text-xs text-slate-500 dark:text-slate-400">
-                      Personal Rank (Equal-Mocks Cohort)
+              <div className="space-y-6 sm:space-y-8">
+                {/* Top Row: Personal Rank (Equal-Mocks Cohort) + Average Score + Part A & Part B Average Scores (2x2 on Mobile!) */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+                  <div className="p-3.5 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                    <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 leading-tight">
+                      Personal Rank (Equal Cohort)
                     </div>
-                    <div className="text-3xl font-bold font-mono text-slate-950 dark:text-white mt-1.5">
+                    <div className="text-xl sm:text-3xl font-bold font-mono text-slate-950 dark:text-white mt-1">
                       {completedAttemptsCount > 0 && myEqualCohortRank
                         ? `#${myEqualCohortRank}`
                         : 'Unranked'}
                     </div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+                    <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1">
                       {completedAttemptsCount > 0
-                        ? `Peers with ${completedAttemptsCount} mock${
+                        ? `Peers (${completedAttemptsCount} mock${
                             completedAttemptsCount > 1 ? 's' : ''
-                          }: ${Math.max(1, equalMocksCohortLeaderboard.length)}`
-                        : 'Attempt 1 mock to rank'}
+                          }): ${Math.max(1, equalMocksCohortLeaderboard.length)}`
+                        : 'Attempt 1 mock'}
                     </div>
                   </div>
 
-                  <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                  <div className="p-3.5 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                    <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 leading-tight">
                       Overall Average Score
                     </div>
-                    <div className="text-3xl font-bold font-mono text-slate-950 dark:text-white mt-1.5">
+                    <div className="text-xl sm:text-3xl font-bold font-mono text-slate-950 dark:text-white mt-1">
                       {(userProfile?.averageScore || 0).toFixed(2)}
                     </div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
-                      Mocks Attempted: {completedAttemptsCount} · Acc:{' '}
+                    <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      Mocks: {completedAttemptsCount} · Acc:{' '}
                       {(userProfile?.averageAccuracy || 0).toFixed(1)}%
                     </div>
                   </div>
 
-                  <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                  <div className="p-3.5 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                    <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 leading-tight">
                       Part A Average Score
                     </div>
-                    <div className="text-3xl font-bold font-mono text-slate-950 dark:text-white mt-1.5">
+                    <div className="text-xl sm:text-3xl font-bold font-mono text-slate-950 dark:text-white mt-1">
                       {partAAvg.toFixed(2)}
                     </div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
-                      GA + Reasoning + Maths + Hindi + English
+                    <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1 truncate">
+                      GA · Reas · Maths · HI · EN
                     </div>
                   </div>
 
-                  <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                    <div className="text-xs text-slate-500 dark:text-slate-400">
-                      Part B Average Score (CS + Teaching)
+                  <div className="p-3.5 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                    <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 leading-tight">
+                      Part B Avg (CS + Teaching)
                     </div>
-                    <div className="text-3xl font-bold font-mono text-slate-950 dark:text-white mt-1.5">
+                    <div className="text-xl sm:text-3xl font-bold font-mono text-slate-950 dark:text-white mt-1">
                       {partBAvg.toFixed(2)}
                     </div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
-                      Computer Science + Teaching Methodology
+                    <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1 truncate">
+                      Computer Science + Teaching
                     </div>
                   </div>
                 </div>
 
-                {/* Section-Wise Average Scores (All 7 Sections — No Extra Subtitle Below Heading) */}
-                <div className="space-y-4">
+                {/* Section-Wise Average Scores (All 7 Sections — 2-Column Grid on Mobile) */}
+                <div className="space-y-3 sm:space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                    <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
                       Section-Wise Average Score Breakdown
                     </h2>
                     <button
                       type="button"
                       onClick={() => setActiveNav('mocks')}
-                      className="px-3.5 py-2 text-xs font-semibold text-white dark:text-slate-950 bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-slate-200 rounded-lg cursor-pointer"
+                      className="px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-semibold text-white dark:text-slate-950 bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-slate-200 rounded-lg cursor-pointer"
                     >
                       Go to Mocks →
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
                     {SECTION_CARDS_META.map((sec) => {
                       const avgVal = sectionAvgMap[sec.subject] ?? 0;
                       return (
                         <div
                           key={sec.subject}
-                          className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between"
+                          className="p-3.5 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between"
                         >
                           <div>
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-xs font-mono font-semibold text-slate-500 dark:text-slate-400">
+                            <div className="flex items-center justify-between gap-1.5">
+                              <span className="text-[11px] sm:text-xs font-mono font-semibold text-slate-500 dark:text-slate-400">
                                 {sec.part}
                               </span>
-                              <span className="text-[11px] font-mono text-slate-400 dark:text-slate-500">
-                                Avg Score
+                              <span className="text-[10px] sm:text-[11px] font-mono text-slate-400 dark:text-slate-500">
+                                Avg
                               </span>
                             </div>
-                            <h3 className="text-base font-bold text-slate-950 dark:text-white mt-1">
+                            <h3 className="text-xs sm:text-base font-bold text-slate-950 dark:text-white mt-1 leading-snug">
                               {sec.label}
                             </h3>
                           </div>
 
-                          <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800 flex items-baseline justify-between">
-                            <span className="text-xs text-slate-500 dark:text-slate-400">
-                              Section Average
+                          <div className="pt-2.5 sm:pt-4 mt-2.5 sm:mt-4 border-t border-slate-100 dark:border-slate-800 flex items-baseline justify-between">
+                            <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+                              Score
                             </span>
-                            <span className="text-2xl font-bold font-mono text-slate-950 dark:text-white">
+                            <span className="text-lg sm:text-2xl font-bold font-mono text-slate-950 dark:text-white">
                               {avgVal.toFixed(2)}
                             </span>
                           </div>
@@ -1262,29 +1307,29 @@ export default function App() {
                     })}
 
                     {/* Combined Part A + Part B Summary Card */}
-                    <div className="p-5 rounded-xl border border-slate-900 dark:border-slate-700 bg-slate-900 dark:bg-slate-800 text-white flex flex-col justify-between">
+                    <div className="p-3.5 sm:p-5 rounded-xl border border-slate-900 dark:border-slate-700 bg-slate-900 dark:bg-slate-800 text-white flex flex-col justify-between">
                       <div>
-                        <div className="text-xs font-mono text-slate-400">
-                          Part-Wise Total Summary
+                        <div className="text-[10px] sm:text-xs font-mono text-slate-400">
+                          Part-Wise Total
                         </div>
-                        <h3 className="text-base font-bold mt-1">
-                          Part A + Part B Combined
+                        <h3 className="text-xs sm:text-base font-bold mt-1 leading-snug">
+                          Part A + Part B
                         </h3>
-                        <div className="mt-3 space-y-1.5 text-xs font-mono">
+                        <div className="mt-2 sm:mt-3 space-y-1 text-[11px] sm:text-xs font-mono">
                           <div className="flex items-center justify-between text-slate-300">
                             <span>Part A:</span>
                             <span className="font-bold text-white">{partAAvg.toFixed(2)}</span>
                           </div>
                           <div className="flex items-center justify-between text-slate-300">
-                            <span>Part B (CS + Teaching):</span>
+                            <span>Part B:</span>
                             <span className="font-bold text-white">{partBAvg.toFixed(2)}</span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="pt-3 mt-3 border-t border-slate-800 dark:border-slate-700 flex items-baseline justify-between">
-                        <span className="text-xs text-slate-300">Overall Avg Score</span>
-                        <span className="text-2xl font-bold font-mono text-white">
+                      <div className="pt-2.5 sm:pt-3 mt-2.5 sm:mt-3 border-t border-slate-800 dark:border-slate-700 flex items-baseline justify-between">
+                        <span className="text-[11px] sm:text-xs text-slate-300">Total Avg</span>
+                        <span className="text-lg sm:text-2xl font-bold font-mono text-white">
                           {(userProfile?.averageScore || 0).toFixed(2)}
                         </span>
                       </div>
@@ -1295,7 +1340,7 @@ export default function App() {
                 {/* Equal-Mocks Cohort Leaderboard Preview Table */}
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                    <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
                       Equal-Mocks Cohort Standings ({completedAttemptsCount} Mock
                       {completedAttemptsCount === 1 ? '' : 's'} Attempted)
                     </h2>
@@ -1312,12 +1357,24 @@ export default function App() {
                     <table className="w-full text-left border-collapse text-xs sm:text-sm">
                       <thead>
                         <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300">
-                          <th className="py-3 px-4 font-semibold">Cohort Rank</th>
-                          <th className="py-3 px-4 font-semibold">Candidate Username</th>
-                          <th className="py-3 px-4 font-semibold text-right">Average Score</th>
-                          <th className="py-3 px-4 font-semibold text-right">Part A Avg</th>
-                          <th className="py-3 px-4 font-semibold text-right">Part B Avg</th>
-                          <th className="py-3 px-4 font-semibold text-right">Mocks Attempted</th>
+                          <th className="py-2.5 sm:py-3 px-3 sm:px-4 font-semibold whitespace-nowrap">
+                            Rank
+                          </th>
+                          <th className="py-2.5 sm:py-3 px-3 sm:px-4 font-semibold whitespace-nowrap">
+                            Candidate
+                          </th>
+                          <th className="py-2.5 sm:py-3 px-3 sm:px-4 font-semibold text-right whitespace-nowrap">
+                            Avg Score
+                          </th>
+                          <th className="py-2.5 sm:py-3 px-3 sm:px-4 font-semibold text-right whitespace-nowrap">
+                            Part A
+                          </th>
+                          <th className="py-2.5 sm:py-3 px-3 sm:px-4 font-semibold text-right whitespace-nowrap">
+                            Part B
+                          </th>
+                          <th className="py-2.5 sm:py-3 px-3 sm:px-4 font-semibold text-right whitespace-nowrap">
+                            Mocks
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -1342,21 +1399,23 @@ export default function App() {
                                     : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
                                 }
                               >
-                                <td className="py-3 px-4 font-mono font-bold">#{entry.rank}</td>
-                                <td className="py-3 px-4">
+                                <td className="py-2.5 sm:py-3 px-3 sm:px-4 font-mono font-bold whitespace-nowrap">
+                                  #{entry.rank}
+                                </td>
+                                <td className="py-2.5 sm:py-3 px-3 sm:px-4 whitespace-nowrap">
                                   {entry.candidateName}
                                   {isMe ? ' (You)' : ''}
                                 </td>
-                                <td className="py-3 px-4 text-right font-mono font-bold">
+                                <td className="py-2.5 sm:py-3 px-3 sm:px-4 text-right font-mono font-bold whitespace-nowrap">
                                   {entry.averageScore.toFixed(2)}
                                 </td>
-                                <td className="py-3 px-4 text-right font-mono">
+                                <td className="py-2.5 sm:py-3 px-3 sm:px-4 text-right font-mono whitespace-nowrap">
                                   {(entry.partAAverageScore || 0).toFixed(2)}
                                 </td>
-                                <td className="py-3 px-4 text-right font-mono">
+                                <td className="py-2.5 sm:py-3 px-3 sm:px-4 text-right font-mono whitespace-nowrap">
                                   {(entry.partBAverageScore || 0).toFixed(2)}
                                 </td>
-                                <td className="py-3 px-4 text-right font-mono">
+                                <td className="py-2.5 sm:py-3 px-3 sm:px-4 text-right font-mono whitespace-nowrap">
                                   {entry.mocksAttempted}
                                 </td>
                               </tr>
