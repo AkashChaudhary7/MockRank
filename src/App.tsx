@@ -219,10 +219,10 @@ export default function App() {
   }, [syncServerTimeAndAdminMocks]);
 
   const hydrateAuthenticatedCandidate = useCallback(
-    async (activeUser: User | AppUserSession) => {
+    async (activeUser: User | AppUserSession, customUsername?: string) => {
       try {
         const [profile, adminFlag, storedConfig] = await Promise.all([
-          ensureUserProfile(activeUser),
+          ensureUserProfile(activeUser, customUsername),
           checkIsAdminUser(activeUser),
           fetchChallengeConfig(),
         ]);
@@ -244,6 +244,8 @@ export default function App() {
         setUsernameInput(profile.username || '');
         if (!profile.username || !profile.username.trim()) {
           setShowUsernameModal(true);
+        } else {
+          setShowUsernameModal(false);
         }
         setIsAdmin(adminFlag);
         setUserAttempts(attempts);
@@ -518,6 +520,14 @@ export default function App() {
     setAuthBusy(true);
     setAuthError(null);
     try {
+      if (auth.currentUser && auth.currentUser.email?.toLowerCase() !== cleanEmail) {
+        try {
+          await signOut(auth);
+        } catch {
+          // Ignore if sign-out is not needed
+        }
+      }
+
       const fallbackName =
         (customUsernameRaw || '').trim() || cleanEmail.split('@')[0] || 'Aspirant';
       const sessionObj: AppUserSession = {
@@ -531,15 +541,7 @@ export default function App() {
 
       saveCustomDomainUserSession(sessionObj);
       setFirebaseUser(sessionObj);
-      await hydrateAuthenticatedCandidate(sessionObj);
-
-      if (customUsernameRaw && customUsernameRaw.trim()) {
-        const currentProfile = await ensureUserProfile(sessionObj);
-        await saveCandidateUsername(currentProfile.uid, customUsernameRaw.trim());
-        const refreshed = await ensureUserProfile(sessionObj);
-        setUserProfile(refreshed);
-        setShowUsernameModal(false);
-      }
+      await hydrateAuthenticatedCandidate(sessionObj, (customUsernameRaw || '').trim());
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Unable to sign in with Gmail ID.');
     } finally {

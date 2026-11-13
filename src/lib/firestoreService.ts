@@ -70,55 +70,39 @@ export async function ensureUserProfile(
   const uid = sanitizeId(user.uid);
   const path = `users/${uid}`;
   const userRef = doc(db, 'users', uid);
+  const cleanCustomName = customName ? sanitizeString(customName, 60, '') : '';
 
   try {
     const snap = await getDoc(userRef);
     if (snap.exists()) {
       const existingData = snap.data() as UserProfile;
-      if (customName && (!existingData.username || !existingData.username.trim())) {
-        await saveCandidateUsername(uid, customName);
+      if (cleanCustomName && existingData.username !== cleanCustomName) {
+        await updateDoc(userRef, {
+          username: cleanCustomName,
+          fullName: sanitizeString(cleanCustomName, BLUEPRINT_CONSTRAINTS.NAME_MAX_LEN),
+          updatedAt: serverTimestamp(),
+        });
         return {
           ...existingData,
-          username: sanitizeString(customName, 60, ''),
-          fullName: sanitizeString(customName, BLUEPRINT_CONSTRAINTS.NAME_MAX_LEN),
+          username: cleanCustomName,
+          fullName: sanitizeString(cleanCustomName, BLUEPRINT_CONSTRAINTS.NAME_MAX_LEN),
         };
       }
       return existingData;
-    }
-
-    // If logging in from a custom domain (like mock.dsssbpyq.online), check if an account with the same Gmail already exists
-    if (user.email) {
-      const cleanEmail = user.email.trim().toLowerCase();
-      const emailQuery = query(
-        collection(db, 'users'),
-        where('email', '==', cleanEmail),
-        limit(1)
-      );
-      const emailSnap = await getDocs(emailQuery);
-      if (!emailSnap.empty) {
-        const matchedProfile = emailSnap.docs[0].data() as UserProfile;
-        if ('isCustomDomainSession' in user && user.isCustomDomainSession) {
-          saveCustomDomainUserSession({
-            uid: matchedProfile.uid,
-            email: matchedProfile.email,
-            displayName: matchedProfile.username || matchedProfile.fullName,
-            photoURL: matchedProfile.photoURL || null,
-            emailVerified: true,
-            isCustomDomainSession: true,
-          });
-        }
-        return matchedProfile;
-      }
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, path);
   }
 
+  const resolvedUsername =
+    cleanCustomName ||
+    (user.displayName ? sanitizeString(user.displayName, 60, '') : '');
+
   const newProfile: UserProfile = {
     uid,
-    username: customName ? sanitizeString(customName, 60, '') : '',
+    username: resolvedUsername,
     fullName: sanitizeString(
-      customName || user.displayName || user.email?.split('@')[0] || 'Aspirant',
+      resolvedUsername || user.displayName || user.email?.split('@')[0] || 'Aspirant',
       BLUEPRINT_CONSTRAINTS.NAME_MAX_LEN
     ),
     email: sanitizeString(
@@ -164,10 +148,26 @@ export async function saveCandidateUsername(uid: string, username: string): Prom
   const safeUid = sanitizeId(uid);
   const cleanUsername = sanitizeString(username, 60, 'Aspirant');
   const path = `users/${safeUid}`;
+  const userRef = doc(db, 'users', safeUid);
   try {
-    await updateDoc(doc(db, 'users', safeUid), {
+    const snap = await getDoc(userRef);
+    if (!snap.exists()) {
+      await ensureUserProfile(
+        {
+          uid: safeUid,
+          email: 'candidate@mockrank.in',
+          displayName: cleanUsername,
+          photoURL: null,
+          emailVerified: true,
+          isCustomDomainSession: true,
+        },
+        cleanUsername
+      );
+      return;
+    }
+    await updateDoc(userRef, {
       username: cleanUsername,
-      fullName: cleanUsername,
+      fullName: sanitizeString(cleanUsername, BLUEPRINT_CONSTRAINTS.NAME_MAX_LEN),
       updatedAt: serverTimestamp(),
     });
   } catch (error) {
@@ -1086,7 +1086,9 @@ export async function deleteMockAdmin(
 export async function fetchAllCandidatesAdmin(): Promise<UserProfile[]> {
   const path = 'users';
   try {
-    const snap = await getDocs(query(collection(db, 'users'), limit(100)));
+    const snap = await getDocs(
+      query(collection(db, 'users'), where('uid', '!=', ''), limit(100))
+    );
     return snap.docs.map((d) => d.data() as UserProfile);
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
@@ -1096,7 +1098,9 @@ export async function fetchAllCandidatesAdmin(): Promise<UserProfile[]> {
 export async function fetchAllAttemptsAdmin(): Promise<ExamAttempt[]> {
   const path = 'attempts';
   try {
-    const snap = await getDocs(query(collection(db, 'attempts'), limit(200)));
+    const snap = await getDocs(
+      query(collection(db, 'attempts'), where('uid', '!=', ''), limit(200))
+    );
     return snap.docs.map((d) => d.data() as ExamAttempt);
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
