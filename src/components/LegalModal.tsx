@@ -7,27 +7,27 @@ interface LegalModalProps {
 
 export const LegalModal: React.FC<LegalModalProps> = ({ onClose }) => {
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
-      <div className="bg-white border border-slate-200 rounded-xl max-w-3xl w-full max-h-[88vh] flex flex-col overflow-hidden shadow-xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-black/75 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl max-w-3xl w-full max-h-[88vh] flex flex-col overflow-hidden shadow-xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
           <div className="flex items-center gap-2">
-            <Scale className="w-5 h-5 text-slate-900" />
-            <h2 className="text-lg font-bold text-slate-900">
+            <Scale className="w-5 h-5 text-slate-900 dark:text-slate-100" />
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">
               Legal Disclosures, Privacy, Refund Policy & Terms
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-500 hover:text-slate-900 border border-slate-200 rounded-lg cursor-pointer"
+            className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800 rounded-lg cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-5 text-xs sm:text-sm text-slate-700 leading-relaxed">
-          <section className="p-4 rounded-lg bg-slate-50 border border-slate-200">
-            <h3 className="font-bold text-slate-900 mb-1">
+        <div className="flex-1 overflow-y-auto p-6 space-y-5 text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+          <section className="p-4 rounded-lg bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800">
+            <h3 className="font-bold text-slate-900 dark:text-white mb-1">
               Independent Platform Disclaimer (Non-Affiliation Notice)
             </h3>
             <p>
@@ -40,7 +40,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({ onClose }) => {
           </section>
 
           <section>
-            <h3 className="font-bold text-slate-900 mb-1">1. Terms and Conditions</h3>
+            <h3 className="font-bold text-slate-900 dark:text-white mb-1">1. Terms and Conditions</h3>
             <p>
               Each enrolled candidate is permitted one official scored attempt per mock test in the
               21-Day Challenge. Daily mocks unlock at 12:00 AM IST (Asia/Kolkata) starting from the
@@ -50,7 +50,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({ onClose }) => {
           </section>
 
           <section>
-            <h3 className="font-bold text-slate-900 mb-1">2. Privacy & Data Retention Policy</h3>
+            <h3 className="font-bold text-slate-900 dark:text-white mb-1">2. Privacy & Data Retention Policy</h3>
             <p>
               We collect only essential candidate information required for authentication,
               entitlement verification, and rank computation: your name, verified email address,
@@ -62,7 +62,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({ onClose }) => {
           </section>
 
           <section>
-            <h3 className="font-bold text-slate-900 mb-1">
+            <h3 className="font-bold text-slate-900 dark:text-white mb-1">
               3. Payment Disclosures & Refund Policy
             </h3>
             <p>
@@ -75,11 +75,11 @@ export const LegalModal: React.FC<LegalModalProps> = ({ onClose }) => {
           </section>
 
           <section>
-            <h3 className="font-bold text-slate-900 mb-1">4. Contact & Grievance Support</h3>
+            <h3 className="font-bold text-slate-900 dark:text-white mb-1">4. Contact & Grievance Support</h3>
             <p>
               For technical support, payment reconciliation, or account assistance, contact the
               MockRank Examination Helpdesk at{' '}
-              <span className="font-mono text-slate-900">support@mockrank.in</span> (Operating
+              <span className="font-mono text-slate-900 dark:text-slate-100">support@mockrank.in</span> (Operating
               Hours: 09:00 AM – 07:00 PM IST, Monday to Saturday).
             </p>
           </section>

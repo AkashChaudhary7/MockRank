@@ -71,31 +71,31 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
   return (
     <div className="space-y-6 pb-12">
       {/* Top Full-Page Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-slate-200">
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-slate-200 dark:border-slate-800">
         <div className="space-y-1">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={onBackToDashboard}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-950 cursor-pointer"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white cursor-pointer"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Back to Dashboard</span>
             </button>
-            <span className="text-slate-300" aria-hidden="true">
+            <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
               /
             </span>
             <button
               type="button"
               onClick={onBackToMocks}
-              className="text-xs font-medium text-slate-500 hover:text-slate-900 cursor-pointer"
+              className="text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"
             >
               Mocks
             </button>
           </div>
           <div className="flex items-center gap-2.5 pt-1">
-            <Trophy className="w-6 h-6 text-slate-900" />
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-950">
+            <Trophy className="w-6 h-6 text-slate-900 dark:text-slate-100" />
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-950 dark:text-white">
               Live Competitive Leaderboard
             </h1>
           </div>
@@ -104,7 +104,7 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
         <button
           type="button"
           onClick={handleManualRefresh}
-          className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg cursor-pointer"
+          className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-lg cursor-pointer"
         >
           <RefreshCw className="w-3.5 h-3.5" />
           <span>Refresh Standings</span>
@@ -112,15 +112,15 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
       </div>
 
       {/* Scope Selector Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 rounded-xl">
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setSelectedScope('overall')}
             className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
               selectedScope === 'overall'
-                ? 'bg-slate-900 text-white'
-                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950'
+                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
             }`}
           >
             Average Score Leaderboard (Equal-Mocks Cohort)
@@ -132,7 +132,7 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
               onChange={(e) => {
                 if (e.target.value) setSelectedScope(e.target.value);
               }}
-              className="px-3 py-1.5 text-xs font-medium bg-white border border-slate-200 rounded-md text-slate-800 cursor-pointer"
+              className="px-3 py-1.5 text-xs font-medium bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md text-slate-800 dark:text-slate-200 cursor-pointer"
             >
               <option value="" disabled>
                 Select Individual Mock...
@@ -148,7 +148,7 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
 
         {selectedScope === 'overall' && (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500">Compare Cohort:</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">Compare Cohort:</span>
             <select
               value={cohortFilter}
               onChange={(e) => {
@@ -157,7 +157,7 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
                   val === 'my_cohort' || val === 'all' ? val : Number(val)
                 );
               }}
-              className="px-2.5 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-md text-slate-900 cursor-pointer"
+              className="px-2.5 py-1.5 text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md text-slate-900 dark:text-slate-100 cursor-pointer"
             >
               <option value="my_cohort">
                 My Equal-Mock Cohort ({Math.max(1, currentUserMocksAttempted)} Mock
@@ -175,17 +175,17 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
       </div>
 
       {/* Table Body */}
-      <div className="bg-white">
+      <div className="bg-white dark:bg-slate-900 rounded-xl">
         {selectedScope === 'overall' ? (
           displayedOverallEntries.length === 0 ? (
-            <div className="py-16 text-center text-sm text-slate-500 border border-slate-200 rounded-xl bg-slate-50/40">
+            <div className="py-16 text-center text-sm text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50/40 dark:bg-slate-900/50">
               No candidates in this exact mock-count cohort yet. Complete a mock to claim Rank #1!
             </div>
           ) : (
-            <div className="border border-slate-200 rounded-xl overflow-x-auto">
+            <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs sm:text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
+                  <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 text-slate-600 dark:text-slate-400">
                     <th className="py-3.5 px-4 font-semibold">Cohort Rank</th>
                     <th className="py-3.5 px-4 font-semibold">Candidate Username</th>
                     <th className="py-3.5 px-4 font-semibold text-right">Average Score</th>
@@ -195,7 +195,7 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
                     <th className="py-3.5 px-4 font-semibold text-right">Avg Accuracy</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200">
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                   {displayedOverallEntries.map((entry) => {
                     const isMe = entry.uid === currentUid;
                     return (
@@ -203,8 +203,8 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
                         key={entry.uid}
                         className={
                           isMe
-                            ? 'bg-slate-900/5 font-semibold text-slate-950'
-                            : 'hover:bg-slate-50 text-slate-800'
+                            ? 'bg-slate-900/5 dark:bg-slate-800/70 font-semibold text-slate-950 dark:text-white'
+                            : 'hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-800 dark:text-slate-200'
                         }
                       >
                         <td className="py-3.5 px-4 font-mono font-bold">#{entry.rank}</td>
@@ -212,7 +212,7 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
                           {entry.candidateName}
                           {isMe ? ' (You)' : ''}
                         </td>
-                        <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">
+                        <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
                           {entry.averageScore.toFixed(2)}
                         </td>
                         <td className="py-3.5 px-4 text-right font-mono">
@@ -235,14 +235,14 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
             </div>
           )
         ) : mockEntries.length === 0 ? (
-          <div className="py-16 text-center text-sm text-slate-500 border border-slate-200 rounded-xl bg-slate-50/40">
+          <div className="py-16 text-center text-sm text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50/40 dark:bg-slate-900/50">
             No verified official attempts recorded for {selectedScope} yet.
           </div>
         ) : (
-          <div className="border border-slate-200 rounded-xl overflow-x-auto">
+          <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs sm:text-sm">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
+                <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 text-slate-600 dark:text-slate-400">
                   <th className="py-3.5 px-4 font-semibold">Rank</th>
                   <th className="py-3.5 px-4 font-semibold">Candidate Username</th>
                   <th className="py-3.5 px-4 font-semibold text-right">Score</th>
@@ -252,7 +252,7 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
                   <th className="py-3.5 px-4 font-semibold text-right">Submitted At</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                 {mockEntries.map((entry) => {
                   const isMe = entry.uid === currentUid;
                   const mins = Math.floor(entry.timeTakenSeconds / 60);
@@ -262,8 +262,8 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
                       key={entry.uid}
                       className={
                         isMe
-                          ? 'bg-slate-900/5 font-semibold text-slate-950'
-                          : 'hover:bg-slate-50 text-slate-800'
+                          ? 'bg-slate-900/5 dark:bg-slate-800/70 font-semibold text-slate-950 dark:text-white'
+                          : 'hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-800 dark:text-slate-200'
                       }
                     >
                       <td className="py-3.5 px-4 font-mono font-bold">#{entry.rank}</td>
@@ -271,10 +271,10 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
                         {entry.candidateName}
                         {isMe ? ' (You)' : ''}
                       </td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">
+                      <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
                         {entry.score.toFixed(2)}
                       </td>
-                      <td className="py-3.5 px-4 text-right font-mono text-emerald-700">
+                      <td className="py-3.5 px-4 text-right font-mono text-emerald-700 dark:text-emerald-400">
                         {entry.correctAnswers}
                       </td>
                       <td className="py-3.5 px-4 text-right font-mono">
@@ -283,7 +283,7 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
                       <td className="py-3.5 px-4 text-right font-mono">
                         {mins}m {secs}s
                       </td>
-                      <td className="py-3.5 px-4 text-right font-mono text-xs text-slate-500">
+                      <td className="py-3.5 px-4 text-right font-mono text-xs text-slate-500 dark:text-slate-400">
                         {entry.submittedAt.slice(0, 16).replace('T', ' ')}
                       </td>
                     </tr>

@@ -8,8 +8,9 @@ import {
   Clock,
   Lock,
   Maximize2,
+  Moon,
   Send,
-  ShieldAlert,
+  Sun,
 } from 'lucide-react';
 import {
   ExamAttempt,
@@ -30,6 +31,8 @@ interface ExamTerminalModalProps {
   sections: SectionBlueprint[];
   questions: PublicQuestion[];
   attempt: ExamAttempt;
+  darkMode?: boolean;
+  onToggleDarkMode?: () => void;
   onAutosave: (
     responses: Record<string, number>,
     markedForReview: string[],
@@ -56,7 +59,6 @@ const DSSSB_SECTION_ORDER: { subject: SubjectSlug; label: string; part: 'Part A'
 
 export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
   mockId,
-  dayNumber,
   title,
   candidateName,
   candidateEmail,
@@ -65,6 +67,8 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
   incorrectMarks,
   questions,
   attempt,
+  darkMode,
+  onToggleDarkMode,
   onAutosave,
   onSubmitFinal,
   onExitWithoutSubmit,
@@ -310,7 +314,6 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
     let baselineHeight = window.innerHeight;
     let resizeGuardArmed = false;
 
-    // Allow 1.5s for initial fullscreen transition when starting exam, then arm strict resize detection
     const armTimer = window.setTimeout(() => {
       baselineWidth = window.innerWidth;
       baselineHeight = window.innerHeight;
@@ -412,7 +415,6 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
     if (hasNextInSection) {
       setCurrentIndex(currentSectionIndices[posInCurrentSection + 1]);
     } else {
-      // At the last question of the current section -> prompt to lock section & proceed
       if (activeSectionIndex < orderedSections.length - 1) {
         setShowLockSectionConfirm(true);
       } else {
@@ -491,53 +493,66 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
   // Pre-Exam Official Instructions Screen
   if (!instructionsAccepted) {
     return (
-      <div className="fixed inset-0 z-50 bg-white flex flex-col overflow-y-auto">
-        <header className="border-b border-slate-200 px-6 py-4 flex items-center justify-between bg-slate-50">
+      <div className="fixed inset-0 z-50 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col overflow-y-auto">
+        <header className="border-b border-slate-200 dark:border-slate-800 px-6 py-4 flex items-center justify-between bg-slate-50 dark:bg-slate-900">
           <div>
-            <div className="text-xs font-mono text-slate-500">
+            <div className="text-xs font-mono text-slate-500 dark:text-slate-400">
               DSSSB TGT COMPUTER SCIENCE · OFFICIAL CBT TERMINAL ({mockId})
             </div>
-            <h1 className="text-lg font-bold text-slate-900">{title}</h1>
+            <h1 className="text-lg font-bold text-slate-900 dark:text-white">{title}</h1>
           </div>
-          <button
-            type="button"
-            onClick={onExitWithoutSubmit}
-            className="px-3.5 py-1.5 text-xs font-medium text-slate-700 hover:text-slate-950 border border-slate-300 rounded-md bg-white cursor-pointer"
-          >
-            Return to Dashboard
-          </button>
+          <div className="flex items-center gap-2.5">
+            {onToggleDarkMode && (
+              <button
+                type="button"
+                onClick={onToggleDarkMode}
+                aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded-md cursor-pointer"
+              >
+                {darkMode ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+                <span>{darkMode ? 'Light' : 'Dark'}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onExitWithoutSubmit}
+              className="px-3.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-800 cursor-pointer"
+            >
+              Return to Dashboard
+            </button>
+          </div>
         </header>
 
         <div className="max-w-4xl mx-auto w-full flex-1 px-6 py-8 space-y-6">
-          <div className="p-5 rounded-xl border border-slate-200 bg-slate-50/60 grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900 grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
-              <div className="text-xs text-slate-500">Total Questions</div>
-              <div className="text-xl font-bold font-mono text-slate-900">
+              <div className="text-xs text-slate-500 dark:text-slate-400">Total Questions</div>
+              <div className="text-xl font-bold font-mono text-slate-900 dark:text-white">
                 {questions.length} MCQs
               </div>
             </div>
             <div>
-              <div className="text-xs text-slate-500">Duration</div>
-              <div className="text-xl font-bold font-mono text-slate-900">
+              <div className="text-xs text-slate-500 dark:text-slate-400">Duration</div>
+              <div className="text-xl font-bold font-mono text-slate-900 dark:text-white">
                 {durationMinutes} Mins
               </div>
             </div>
             <div>
-              <div className="text-xs text-slate-500">Correct Answer</div>
-              <div className="text-xl font-bold font-mono text-emerald-700">
+              <div className="text-xs text-slate-500 dark:text-slate-400">Correct Answer</div>
+              <div className="text-xl font-bold font-mono text-emerald-700 dark:text-emerald-400">
                 +{correctMarks.toFixed(2)} Mark
               </div>
             </div>
             <div>
-              <div className="text-xs text-slate-500">Negative Marking</div>
-              <div className="text-xl font-bold font-mono text-red-700">
+              <div className="text-xs text-slate-500 dark:text-slate-400">Negative Marking</div>
+              <div className="text-xl font-bold font-mono text-red-700 dark:text-red-400">
                 {incorrectMarks.toFixed(2)} Mark
               </div>
             </div>
           </div>
 
-          <div className="space-y-4 text-sm text-slate-700 leading-relaxed">
-            <h2 className="text-base font-bold text-slate-900">
+          <div className="space-y-4 text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">
               Strict DSSSB Examination Pattern & Anti-Cheating Rules
             </h2>
             <ul className="list-disc pl-5 space-y-2.5">
@@ -560,15 +575,15 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
               </li>
               <li>
                 <strong>Marking Scheme:</strong> Every correct response awards{' '}
-                <span className="font-mono font-semibold text-emerald-700">+1.00</span> mark. Every
+                <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-400">+1.00</span> mark. Every
                 incorrect response deducts{' '}
-                <span className="font-mono font-semibold text-red-700">0.25</span> marks.
+                <span className="font-mono font-semibold text-red-700 dark:text-red-400">0.25</span> marks.
                 Unattempted questions carry <span className="font-mono">0.00</span> marks.
               </li>
             </ul>
           </div>
 
-          <div className="p-4 rounded-lg border border-slate-200 bg-slate-50">
+          <div className="p-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
             <label className="flex items-start gap-3 cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -576,7 +591,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                 onChange={(e) => setDeclarationChecked(e.target.checked)}
                 className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
               />
-              <span className="text-xs sm:text-sm text-slate-800">
+              <span className="text-xs sm:text-sm text-slate-800 dark:text-slate-200">
                 I have read and understood the DSSSB sequential section-locking rule, the 1-minute
                 per-question limit (excluding Mathematics &amp; Reasoning), and the immediate
                 auto-submit rule upon screen resizing.
@@ -591,8 +606,8 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
               onClick={handleStartExamSession}
               className={`px-6 py-3 rounded-lg text-sm font-semibold transition-colors ${
                 declarationChecked
-                  ? 'bg-slate-900 text-white hover:bg-slate-800 cursor-pointer'
-                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 hover:bg-slate-800 dark:hover:bg-white cursor-pointer'
+                  : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed'
               }`}
             >
               Launch DSSSB CBT Terminal →
@@ -604,9 +619,9 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-white flex flex-col select-none overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col select-none overflow-hidden">
       {/* Top CBT Header Bar */}
-      <header className="h-14 border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between bg-slate-950 text-white shrink-0">
+      <header className="h-14 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 flex items-center justify-between bg-slate-950 text-white shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           <span className="px-2 py-0.5 text-xs font-mono font-semibold bg-slate-800 text-slate-200 rounded border border-slate-700 shrink-0">
             {mockId}
@@ -615,6 +630,18 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
         </div>
 
         <div className="flex items-center gap-3 sm:gap-4 shrink-0">
+          {onToggleDarkMode && (
+            <button
+              type="button"
+              onClick={onToggleDarkMode}
+              aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs font-medium text-slate-200 cursor-pointer"
+            >
+              {darkMode ? <Sun className="w-3.5 h-3.5 text-amber-300" /> : <Moon className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">{darkMode ? 'Light' : 'Dark'}</span>
+            </button>
+          )}
+
           {/* Per-Question 60s Rule Badge */}
           <div
             className={`px-2.5 py-1 rounded border font-mono text-xs font-bold flex items-center gap-1.5 ${
@@ -670,9 +697,9 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
 
       {/* Warning or Section-Lock Notice Banner */}
       {(warningBanner || sectionLockNotice) && (
-        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between text-xs text-amber-900 shrink-0">
+        <div className="bg-amber-50 dark:bg-amber-950/60 border-b border-amber-200 dark:border-amber-800 px-4 py-2 flex items-center justify-between text-xs text-amber-900 dark:text-amber-200 shrink-0">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
             <span>{sectionLockNotice || warningBanner}</span>
           </div>
           <button
@@ -681,7 +708,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
               setWarningBanner(null);
               setSectionLockNotice(null);
             }}
-            className="text-amber-800 underline font-medium ml-4 cursor-pointer"
+            className="text-amber-800 dark:text-amber-300 underline font-medium ml-4 cursor-pointer"
           >
             Dismiss
           </button>
@@ -689,7 +716,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
       )}
 
       {/* DSSSB Sequential Section Bar (Locked / Active / Upcoming) */}
-      <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 flex items-center justify-between gap-2 overflow-x-auto shrink-0">
+      <div className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-4 py-2 flex items-center justify-between gap-2 overflow-x-auto shrink-0">
         <div className="flex items-center gap-1.5">
           {orderedSections.map((sec, idx) => {
             const isCurrentSection = idx === activeSectionIndex;
@@ -713,10 +740,10 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                 }}
                 className={`px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 cursor-pointer ${
                   isCurrentSection
-                    ? 'bg-slate-900 text-white shadow-2xs'
+                    ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 shadow-2xs'
                     : isLocked
-                    ? 'bg-slate-200/80 text-slate-500 border border-slate-300'
-                    : 'bg-white text-slate-500 border border-slate-200'
+                    ? 'bg-slate-200/80 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
+                    : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800'
                 }`}
               >
                 {!isCurrentSection && <Lock className="w-3 h-3 opacity-75" />}
@@ -743,32 +770,34 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
       {/* Main Split Workspace */}
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Left: Active Question Area */}
-        <div className="flex-1 flex flex-col overflow-y-auto p-4 sm:p-6 lg:p-8">
+        <div className="flex-1 flex flex-col overflow-y-auto p-4 sm:p-6 lg:p-8 bg-white dark:bg-slate-950">
           {currentQuestion ? (
             <div className="max-w-3xl w-full mx-auto flex-1 flex flex-col">
               {/* Question Metadata Header */}
-              <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-200">
-                <div className="flex items-center gap-2.5">
-                  <span className="text-sm font-bold font-mono text-slate-900">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-2.5 text-xs text-slate-500 dark:text-slate-400">
+                  <span className="text-sm font-bold font-mono text-slate-900 dark:text-white">
                     Question {posInCurrentSection + 1} of {currentSectionIndices.length} in Section
                   </span>
-                  <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium">
+                  <span aria-hidden="true">·</span>
+                  <span className="font-medium text-slate-700 dark:text-slate-300">
                     {currentSection?.label}
                   </span>
-                  <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600">
+                  <span aria-hidden="true">·</span>
+                  <span>
                     {currentQuestion.topic}
                   </span>
                 </div>
 
                 <div className="flex items-center gap-2 text-xs font-mono">
-                  <span className="text-emerald-700 font-semibold">+1.00</span>
-                  <span className="text-slate-300">/</span>
-                  <span className="text-red-700 font-semibold">-0.25</span>
+                  <span className="text-emerald-700 dark:text-emerald-400 font-semibold">+1.00</span>
+                  <span className="text-slate-300 dark:text-slate-700">/</span>
+                  <span className="text-red-700 dark:text-red-400 font-semibold">-0.25</span>
                 </div>
               </div>
 
               {/* Question Stem */}
-              <div className="py-6 text-base sm:text-lg font-medium text-slate-900 leading-relaxed select-text">
+              <div className="py-6 text-base sm:text-lg font-medium text-slate-900 dark:text-slate-100 leading-relaxed select-text">
                 {currentQuestion.question}
               </div>
 
@@ -785,20 +814,20 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                       onClick={() => handleSelectOption(optIdx)}
                       className={`w-full text-left p-4 rounded-xl border transition-all flex items-start gap-3.5 cursor-pointer ${
                         isSelected
-                          ? 'border-slate-900 bg-slate-900/5 ring-1 ring-slate-900'
-                          : 'border-slate-200 hover:border-slate-300 bg-white'
+                          ? 'border-slate-900 dark:border-slate-200 bg-slate-900/5 dark:bg-slate-800/80 ring-1 ring-slate-900 dark:ring-slate-200'
+                          : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900'
                       }`}
                     >
                       <span
                         className={`w-7 h-7 rounded-md font-mono text-xs font-bold flex items-center justify-center shrink-0 mt-0.5 border ${
                           isSelected
-                            ? 'bg-slate-900 text-white border-slate-900'
-                            : 'bg-slate-50 text-slate-700 border-slate-200'
+                            ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 border-slate-900 dark:border-slate-100'
+                            : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                         }`}
                       >
                         {optionLetter}
                       </span>
-                      <span className="text-sm sm:text-base text-slate-800 leading-relaxed">
+                      <span className="text-sm sm:text-base text-slate-800 dark:text-slate-200 leading-relaxed">
                         {optText}
                       </span>
                     </button>
@@ -807,15 +836,15 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
               </div>
 
               {/* Bottom Action Controls */}
-              <div className="mt-auto pt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200">
+              <div className="mt-auto pt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 dark:border-slate-800">
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={handleToggleMarkForReview}
                     className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium border transition-colors cursor-pointer ${
                       markedForReview.has(currentQuestion.id)
-                        ? 'border-amber-500 bg-amber-50 text-amber-900'
-                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                        ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200'
+                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
                     }`}
                   >
                     <Bookmark className="w-4 h-4" />
@@ -830,7 +859,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                     type="button"
                     onClick={handleClearResponse}
                     disabled={typeof responses[currentQuestion.id] !== 'number'}
-                    className="px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium border border-slate-200 bg-white text-slate-600 hover:text-slate-900 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+                    className="px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
                   >
                     Clear Response
                   </button>
@@ -841,7 +870,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                     type="button"
                     onClick={handlePrevInSection}
                     disabled={!hasPrevInSection}
-                    className="flex items-center gap-1 px-4 py-2 rounded-lg text-xs sm:text-sm font-medium border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+                    className="flex items-center gap-1 px-4 py-2 rounded-lg text-xs sm:text-sm font-medium border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
                   >
                     <ChevronLeft className="w-4 h-4" />
                     <span>Previous</span>
@@ -850,7 +879,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                   <button
                     type="button"
                     onClick={handleSaveAndNextInSection}
-                    className="flex items-center gap-1 px-5 py-2 rounded-lg text-xs sm:text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 cursor-pointer"
+                    className="flex items-center gap-1 px-5 py-2 rounded-lg text-xs sm:text-sm font-semibold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 hover:bg-slate-800 dark:hover:bg-white cursor-pointer"
                   >
                     <span>
                       {hasNextInSection
@@ -868,23 +897,23 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
         </div>
 
         {/* Right: Active Section Question Palette & Legend */}
-        <aside className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-slate-200 bg-slate-50 flex flex-col shrink-0 max-h-64 lg:max-h-none">
-          <div className="p-4 border-b border-slate-200 space-y-2">
+        <aside className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col shrink-0 max-h-64 lg:max-h-none">
+          <div className="p-4 border-b border-slate-200 dark:border-slate-800 space-y-2">
             <div className="flex items-center justify-between">
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              <div className="text-xs font-bold text-slate-600 dark:text-slate-300">
                 Active Section Palette ({currentSection?.questionCount || 0} Qs)
               </div>
               <button
                 type="button"
                 onClick={requestExamFullscreen}
-                className="text-xs text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer"
+                className="text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1 cursor-pointer"
                 title="Enter Fullscreen"
               >
                 <Maximize2 className="w-3.5 h-3.5" />
                 <span>Fullscreen</span>
               </button>
             </div>
-            <div className="text-[11px] font-medium text-slate-600">
+            <div className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
               {currentSection?.label} · Section {activeSectionIndex + 1} of{' '}
               {orderedSections.length}
             </div>
@@ -892,21 +921,21 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
             <div className="grid grid-cols-2 gap-1.5 text-xs pt-1">
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-xs bg-emerald-600 inline-block" />
-                <span className="text-slate-600">Answered ({paletteStats.answered})</span>
+                <span className="text-slate-600 dark:text-slate-300">Answered ({paletteStats.answered})</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-xs bg-red-600 inline-block" />
-                <span className="text-slate-600">Not Answered ({paletteStats.notAnswered})</span>
+                <span className="text-slate-600 dark:text-slate-300">Not Answered ({paletteStats.notAnswered})</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-xs bg-amber-500 inline-block" />
-                <span className="text-slate-600">
+                <span className="text-slate-600 dark:text-slate-300">
                   Marked ({paletteStats.markedOnly + paletteStats.answeredAndMarked})
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-xs bg-white border border-slate-300 inline-block" />
-                <span className="text-slate-600">Not Visited ({paletteStats.notVisited})</span>
+                <span className="w-3 h-3 rounded-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 inline-block" />
+                <span className="text-slate-600 dark:text-slate-300">Not Visited ({paletteStats.notVisited})</span>
               </div>
             </div>
           </div>
@@ -921,7 +950,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                 const isRev = markedForReview.has(q.id);
                 const isVis = visitedIds.has(q.id);
 
-                let btnStyle = 'bg-white text-slate-700 border-slate-300';
+                let btnStyle = 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700';
                 if (isAns && isRev) {
                   btnStyle = 'bg-amber-600 text-white border-amber-700';
                 } else if (isAns) {
@@ -938,7 +967,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                     type="button"
                     onClick={() => setCurrentIndex(globalIdx)}
                     className={`h-9 rounded-md font-mono text-xs font-bold border transition-all flex items-center justify-center cursor-pointer ${btnStyle} ${
-                      isCurrent ? 'ring-2 ring-slate-950 ring-offset-1' : ''
+                      isCurrent ? 'ring-2 ring-slate-950 dark:ring-white ring-offset-1 dark:ring-offset-slate-900' : ''
                     }`}
                   >
                     {localIdx + 1}
@@ -950,11 +979,11 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
 
           {/* Lock Current Section & Move to Next Section Button */}
           {activeSectionIndex < orderedSections.length - 1 && (
-            <div className="p-4 border-t border-slate-200 bg-white">
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
               <button
                 type="button"
                 onClick={() => setShowLockSectionConfirm(true)}
-                className="w-full py-2.5 px-3 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center gap-1.5 cursor-pointer"
+                className="w-full py-2.5 px-3 rounded-lg text-xs font-semibold bg-slate-900 dark:bg-slate-100 hover:bg-slate-800 dark:hover:bg-white text-white dark:text-slate-950 flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Lock className="w-3.5 h-3.5" />
                 <span>
@@ -968,15 +997,15 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
 
       {/* Lock Current Section Confirmation Modal */}
       {showLockSectionConfirm && currentSection && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-xl max-w-md w-full p-6 shadow-xl space-y-5">
+        <div className="fixed inset-0 z-50 bg-slate-950/60 dark:bg-black/75 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl max-w-md w-full p-6 shadow-xl space-y-5">
             <div className="flex items-start gap-3">
-              <Lock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <Lock className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
               <div>
-                <h2 className="text-lg font-bold text-slate-900">
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white">
                   Lock Current Section &amp; Proceed?
                 </h2>
-                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
                   You are about to permanently lock{' '}
                   <strong>{currentSection.label}</strong> and unlock the next section:{' '}
                   <strong>
@@ -991,14 +1020,14 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
               <button
                 type="button"
                 onClick={() => setShowLockSectionConfirm(false)}
-                className="px-4 py-2 rounded-lg text-xs font-medium border border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer"
+                className="px-4 py-2 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
               >
                 Stay in Current Section
               </button>
               <button
                 type="button"
                 onClick={handleConfirmLockCurrentSection}
-                className="px-5 py-2 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white cursor-pointer"
+                className="px-5 py-2 rounded-lg text-xs font-semibold bg-slate-900 dark:bg-slate-100 hover:bg-slate-800 dark:hover:bg-white text-white dark:text-slate-950 cursor-pointer"
               >
                 Yes, Lock Section &amp; Continue →
               </button>
@@ -1009,39 +1038,39 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
 
       {/* Final Submission Confirmation Modal */}
       {showSubmitConfirm && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-xl max-w-md w-full p-6 shadow-xl space-y-5">
+        <div className="fixed inset-0 z-50 bg-slate-950/60 dark:bg-black/75 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl max-w-md w-full p-6 shadow-xl space-y-5">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
                 Confirm Final Examination Submission
               </h2>
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                 Candidate: {candidateName} ({candidateEmail})
               </p>
             </div>
 
-            <div className="grid grid-cols-3 gap-3 p-4 rounded-lg bg-slate-50 border border-slate-200 text-center">
+            <div className="grid grid-cols-3 gap-3 p-4 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-center">
               <div>
-                <div className="text-xs text-slate-500">Answered</div>
-                <div className="text-lg font-bold font-mono text-emerald-700">
+                <div className="text-xs text-slate-500 dark:text-slate-400">Answered</div>
+                <div className="text-lg font-bold font-mono text-emerald-700 dark:text-emerald-400">
                   {paletteStats.answered}
                 </div>
               </div>
               <div>
-                <div className="text-xs text-slate-500">Unattempted</div>
-                <div className="text-lg font-bold font-mono text-slate-800">
+                <div className="text-xs text-slate-500 dark:text-slate-400">Unattempted</div>
+                <div className="text-lg font-bold font-mono text-slate-800 dark:text-slate-200">
                   {paletteStats.unattemptedTotal}
                 </div>
               </div>
               <div>
-                <div className="text-xs text-slate-500">Marked Review</div>
-                <div className="text-lg font-bold font-mono text-amber-700">
+                <div className="text-xs text-slate-500 dark:text-slate-400">Marked Review</div>
+                <div className="text-lg font-bold font-mono text-amber-700 dark:text-amber-400">
                   {paletteStats.markedOnly + paletteStats.answeredAndMarked}
                 </div>
               </div>
             </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               Once submitted, your answers are locked and evaluated immediately for official
               ranking.
             </p>
@@ -1051,7 +1080,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                 type="button"
                 disabled={submitting}
                 onClick={() => setShowSubmitConfirm(false)}
-                className="px-4 py-2 rounded-lg text-xs sm:text-sm font-medium border border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer"
+                className="px-4 py-2 rounded-lg text-xs sm:text-sm font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
               >
                 Resume Test
               </button>
@@ -1059,7 +1088,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                 type="button"
                 disabled={submitting}
                 onClick={() => triggerFinalSubmit()}
-                className="flex items-center gap-1.5 px-5 py-2 rounded-lg text-xs sm:text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 cursor-pointer"
+                className="flex items-center gap-1.5 px-5 py-2 rounded-lg text-xs sm:text-sm font-semibold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 hover:bg-slate-800 dark:hover:bg-white cursor-pointer"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>{submitting ? 'Evaluating...' : 'Submit Final Attempt'}</span>
