@@ -2,15 +2,21 @@ import React, { useEffect, useState } from 'react';
 import {
   Activity,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  CloudUpload,
   Database,
+  Eye,
   FileCode2,
   FileJson,
   FolderPlus,
+  HardDrive,
   Plus,
   RefreshCw,
   Save,
   Search,
   Settings,
+  Sparkles,
   Trash2,
   Upload,
   Users,
@@ -36,6 +42,7 @@ import {
   saveChallengeConfigAdmin,
   saveMockConfigAdmin,
   saveMockPaperSingleWrite,
+  saveMockToLocalMemoryOnly,
 } from '../lib/firestoreService';
 
 interface AdminPanelProps {
@@ -87,6 +94,16 @@ const VALID_SUBJECTS: SubjectSlug[] = [
   'teaching-methodology',
 ];
 
+const SUBJECT_DISPLAY_LABELS: Record<SubjectSlug, string> = {
+  'general-awareness': 'Part A · General Awareness',
+  reasoning: 'Part A · Reasoning',
+  mathematics: 'Part A · Mathematics',
+  hindi: 'Part A · Hindi',
+  english: 'Part A · English',
+  'computer-science': 'Part B · Computer Science',
+  'teaching-methodology': 'Part B · Teaching Methodology',
+};
+
 const PRESET_CATEGORIES = [
   'DSSSB TGT Computer Science',
   'Part A General Section',
@@ -112,19 +129,35 @@ function inferPartFromSubject(subject: SubjectSlug): 'Part A' | 'Part B' {
   return 'Part A';
 }
 
-function normalizeSubject(raw?: string, index = 0): SubjectSlug {
-  const s = (raw || '').toLowerCase().trim();
+function normalizeSubject(
+  rawSubject?: string,
+  index = 0,
+  rawTopic?: string,
+  questionNumber?: number
+): SubjectSlug {
+  const s = (rawSubject || '').toLowerCase().trim();
+  const t = (rawTopic || '').toLowerCase().trim();
+  const qNum = typeof questionNumber === 'number' && questionNumber > 0 ? questionNumber : index + 1;
+
   if (s.includes('hindi') || s === 'hi') return 'hindi';
   if (s.includes('english') || s === 'en') return 'english';
-  if (s.includes('math') || s.includes('arith') || s.includes('num')) return 'mathematics';
+  if (s.includes('math') || s.includes('arith') || s.includes('num') || s.includes('quant'))
+    return 'mathematics';
   if (s.includes('reason') || s.includes('intel')) return 'reasoning';
   if (s.includes('general') || s.includes('aware') || s === 'ga' || s === 'gk')
     return 'general-awareness';
-  if (s.includes('teach') || s.includes('pedagog') || s === 'tm')
+  if (s.includes('teach') || s.includes('pedagog') || s === 'tm' || t.includes('pedagog'))
     return 'teaching-methodology';
-  if (s.includes('comp') || s === 'cs') return 'computer-science';
 
-  const pos = index % 200;
+  // In byteprep.mcq.v1 DSSSB 200-question papers, Q181-200 (Section 5 · Q181–200) is the 5th section of Part B (Teaching Methodology / Pedagogy & CS)
+  if (s.includes('comp') || s === 'cs') {
+    if (qNum >= 181 || t.includes('section 5') || t.includes('181')) {
+      return 'teaching-methodology';
+    }
+    return 'computer-science';
+  }
+
+  const pos = (qNum - 1) % 200;
   if (pos < 20) return 'general-awareness';
   if (pos < 40) return 'reasoning';
   if (pos < 60) return 'mathematics';
@@ -134,7 +167,18 @@ function normalizeSubject(raw?: string, index = 0): SubjectSlug {
   return 'teaching-methodology';
 }
 
-function parseUploadedJsonQuestions(rawText: string, mockId: string): PublicQuestion[] {
+export interface ParsedJsonPaperResult {
+  questions: PublicQuestion[];
+  schemaName: string;
+  detectedExamTitle?: string;
+}
+
+/**
+ * Supports `byteprep.mcq.v1` JSON schema (with object options `{ index, label, text }`,
+ * 1-based `correctAnswerIndex` + `correctAnswer`, array explanations `[{ heading, text }]`,
+ * `questionNumber`, `exam`) as well as standard array/object question JSON formats.
+ */
+function parseUploadedJsonQuestions(rawText: string, mockId: string): ParsedJsonPaperResult {
   const parsed = JSON.parse(rawText);
   const rawList: Record<string, unknown>[] = Array.isArray(parsed)
     ? parsed
@@ -148,42 +192,154 @@ function parseUploadedJsonQuestions(rawText: string, mockId: string): PublicQues
     );
   }
 
-  return rawList.slice(0, 200).map((item, idx) => {
-    const subject = normalizeSubject(String(item.subject || item.section || ''), idx);
-    const part = inferPartFromSubject(subject);
-    const rawOpts = Array.isArray(item.options) ? item.options.map((o) => String(o)) : [];
-    const options =
-      rawOpts.length >= 4
-        ? rawOpts.slice(0, 4)
-        : [
-            rawOpts[0] || 'Option A',
-            rawOpts[1] || 'Option B',
-            rawOpts[2] || 'Option C',
-            rawOpts[3] || 'Option D',
-          ];
+  const schemaName =
+    typeof parsed?.schema === 'string' && parsed.schema.trim()
+      ? parsed.schema.trim()
+      : 'standard.mcq.json';
 
-    const correctIdx = Number(
-      item.correctIndex ?? item.correctOptionIndex ?? item.answerIndex ?? 0
+  let detectedExamTitle: string | undefined;
+  if (typeof parsed?.title === 'string' && parsed.title.trim()) {
+    detectedExamTitle = parsed.title.trim();
+  } else if (typeof rawList[0]?.exam === 'string' && String(rawList[0].exam).trim()) {
+    detectedExamTitle = String(rawList[0].exam).trim();
+  }
+
+  const questions: PublicQuestion[] = rawList.slice(0, 200).map((item, idx) => {
+    const qNum =
+      typeof item.questionNumber === 'number' && item.questionNumber > 0
+        ? item.questionNumber
+        : idx + 1;
+
+    const rawTopicStr = String(item.topic || '').trim();
+    const subject = normalizeSubject(
+      String(item.subject || item.section || ''),
+      idx,
+      rawTopicStr,
+      qNum
     );
 
+    const rawIdStr = String(
+      item.id || `${mockId}_Q${String(qNum).padStart(3, '0')}`
+    ).trim();
+
+    let part: 'Part A' | 'Part B' = inferPartFromSubject(subject);
+    if (rawIdStr.toLowerCase().includes('|parta|')) {
+      part = 'Part A';
+    } else if (rawIdStr.toLowerCase().includes('|partb|')) {
+      part = 'Part B';
+    }
+
+    // Parse options: supports [{ index: 1, label: "a", text: "..." }] OR ["Option A", ...]
+    const rawOptsArray = Array.isArray(item.options) ? item.options : [];
+    const extractedOptions: string[] = rawOptsArray.slice(0, 4).map((opt, optIdx) => {
+      if (typeof opt === 'object' && opt !== null) {
+        const optObj = opt as Record<string, unknown>;
+        return String(optObj.text ?? optObj.value ?? optObj.label ?? `Option ${optIdx + 1}`).trim();
+      }
+      return String(opt).trim();
+    });
+
+    const options =
+      extractedOptions.length >= 4
+        ? extractedOptions.slice(0, 4)
+        : [
+            extractedOptions[0] || 'Option A',
+            extractedOptions[1] || 'Option B',
+            extractedOptions[2] || 'Option C',
+            extractedOptions[3] || 'Option D',
+          ];
+
+    // Resolve 0-based correctIndex (0..3) accurately
+    let resolvedCorrectIndex = -1;
+
+    // 1. Check 1-based `correctAnswerIndex` from `byteprep.mcq.v1`
+    if (typeof item.correctAnswerIndex === 'number' && Number.isInteger(item.correctAnswerIndex)) {
+      const caIdx = item.correctAnswerIndex;
+      // Match against option object's `.index` if present
+      const matchedByObjIndex = rawOptsArray.findIndex(
+        (o) => typeof o === 'object' && o !== null && (o as Record<string, unknown>).index === caIdx
+      );
+      if (matchedByObjIndex >= 0 && matchedByObjIndex < 4) {
+        resolvedCorrectIndex = matchedByObjIndex;
+      } else if (caIdx >= 1 && caIdx <= 4) {
+        resolvedCorrectIndex = caIdx - 1;
+      } else if (caIdx === 0) {
+        resolvedCorrectIndex = 0;
+      }
+    }
+
+    // 2. Cross-check or resolve via `correctAnswer` text or label ("a", "b", "c", "d")
+    if (typeof item.correctAnswer === 'string' && item.correctAnswer.trim()) {
+      const caStr = item.correctAnswer.trim();
+      const exactTextMatch = options.findIndex(
+        (optText) => optText.toLowerCase() === caStr.toLowerCase()
+      );
+      if (exactTextMatch >= 0 && exactTextMatch < 4) {
+        resolvedCorrectIndex = exactTextMatch;
+      } else if (resolvedCorrectIndex === -1 && ['a', 'b', 'c', 'd'].includes(caStr.toLowerCase())) {
+        resolvedCorrectIndex = ['a', 'b', 'c', 'd'].indexOf(caStr.toLowerCase());
+      }
+    }
+
+    // 3. Fallback to 0-based `correctIndex` / `correctOptionIndex` / `answerIndex`
+    if (resolvedCorrectIndex < 0 || resolvedCorrectIndex >= 4) {
+      const legacyIdx = Number(
+        item.correctIndex ?? item.correctOptionIndex ?? item.answerIndex ?? 0
+      );
+      resolvedCorrectIndex =
+        Number.isInteger(legacyIdx) && legacyIdx >= 0 && legacyIdx < 4 ? legacyIdx : 0;
+    }
+
+    // Parse explanation: supports [{ heading: "Explanation", text: "..." }] OR string
+    let explanationText = '';
+    if (Array.isArray(item.explanation)) {
+      explanationText = item.explanation
+        .map((expItem) => {
+          if (typeof expItem === 'object' && expItem !== null) {
+            const expObj = expItem as Record<string, unknown>;
+            return String(expObj.text ?? expObj.content ?? '').trim();
+          }
+          return String(expItem).trim();
+        })
+        .filter(Boolean)
+        .join('\n\n');
+    } else if (typeof item.explanation === 'object' && item.explanation !== null) {
+      const expObj = item.explanation as Record<string, unknown>;
+      explanationText = String(expObj.text ?? expObj.content ?? '').trim();
+    } else if (typeof item.explanation === 'string') {
+      explanationText = item.explanation.trim();
+    }
+
+    if (!explanationText) {
+      explanationText = 'Verified against official MockRank answer key.';
+    }
+
+    const questionStem = String(item.question || item.questionText || `Question ${qNum}`).trim();
+    const hasDevanagari = /[\u0900-\u097F]/.test(questionStem);
+
     return {
-      id: String(item.id || `${mockId}_Q${String(idx + 1).padStart(3, '0')}`),
-      topic: String(item.topic || subject),
+      id: rawIdStr,
+      questionNumber: qNum,
+      exam: typeof item.exam === 'string' ? item.exam : detectedExamTitle,
+      topic: rawTopicStr || SUBJECT_DISPLAY_LABELS[subject],
       difficulty:
         item.difficulty === 'easy' || item.difficulty === 'hard' ? item.difficulty : 'medium',
-      question: String(item.question || item.questionText || `Question ${idx + 1}`),
+      question: questionStem,
       options,
-      language: item.language === 'hi' ? 'hi' : 'en',
+      language: item.language === 'hi' || subject === 'hindi' || hasDevanagari ? 'hi' : 'en',
       subject,
       part,
-      sectionLabel: `${part}: ${subject.toUpperCase()}`,
-      correctIndex:
-        Number.isInteger(correctIdx) && correctIdx >= 0 && correctIdx < 4 ? correctIdx : 0,
-      explanation: String(
-        item.explanation || 'Verified against official MockRank answer key.'
-      ),
+      sectionLabel: SUBJECT_DISPLAY_LABELS[subject] || `${part}: ${subject.toUpperCase()}`,
+      correctIndex: resolvedCorrectIndex,
+      explanation: explanationText,
     };
   });
+
+  return {
+    questions,
+    schemaName,
+    detectedExamTitle,
+  };
 }
 
 function parseUploadedHtmlQuestions(rawHtml: string, mockId: string): PublicQuestion[] {
@@ -230,6 +386,7 @@ function parseUploadedHtmlQuestions(rawHtml: string, mockId: string): PublicQues
 
     results.push({
       id: `${mockId}_Q${String(idx + 1).padStart(3, '0')}`,
+      questionNumber: idx + 1,
       topic: subject,
       difficulty: 'medium',
       question: questionText,
@@ -237,7 +394,7 @@ function parseUploadedHtmlQuestions(rawHtml: string, mockId: string): PublicQues
       language: subject === 'hindi' ? 'hi' : 'en',
       subject,
       part,
-      sectionLabel: `${part}: ${subject}`,
+      sectionLabel: SUBJECT_DISPLAY_LABELS[subject] || `${part}: ${subject}`,
       correctIndex:
         Number.isInteger(correctAttr) && correctAttr >= 0 && correctAttr < 4 ? correctAttr : 0,
       explanation: explanationAttr,
@@ -370,6 +527,7 @@ function generateFull200QuestionsTemplate(mockId: string, mockTitle: string): Pu
       const qId = `${mockId}_Q${String(qCounter).padStart(3, '0')}`;
       questions.push({
         id: qId,
+        questionNumber: qCounter,
         topic: sec.label,
         difficulty: i % 3 === 0 ? 'hard' : i % 2 === 0 ? 'medium' : 'easy',
         question: `[${mockTitle} · Q${qCounter}] ${sec.sampleStem} (${sec.label} #${i})?`,
@@ -409,10 +567,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [startDateIST, setStartDateIST] = useState<string>(challengeConfig.startDateIST);
   const [endDateIST, setEndDateIST] = useState<string>(challengeConfig.endDateIST);
   const [isPaused, setIsPaused] = useState<boolean>(challengeConfig.isPaused);
-  const [minEligibility, setMinEligibility] = useState<number>(
-    challengeConfig.minEligibilityAttempts
-  );
-  const [latePolicy, setLatePolicy] = useState<'allow-unlocked' | 'strict-daily'>(
+  const [minEligibility] = useState<number>(challengeConfig.minEligibilityAttempts);
+  const [latePolicy] = useState<'allow-unlocked' | 'strict-daily'>(
     challengeConfig.lateAttemptPolicy
   );
   const [delayedRelease, setDelayedRelease] = useState<boolean>(
@@ -423,9 +579,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
   // Admin Mock Creation / Selection State
-  const nextMockNumber = blueprints.length > 0
-    ? Math.max(...blueprints.map((b) => b.dayNumber)) + 1
-    : 1;
+  const nextMockNumber =
+    blueprints.length > 0 ? Math.max(...blueprints.map((b) => b.dayNumber)) + 1 : 1;
   const defaultNewMockId = `MOCK_${String(nextMockNumber).padStart(2, '0')}`;
 
   const [selectedMockId, setSelectedMockId] = useState<string>(
@@ -462,12 +617,81 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     'after-submission' | 'after-challenge' | 'manual'
   >(currentMock?.answerReleasePolicy || 'after-submission');
 
-  // Uploaded / Parsed Mock Questions State (Up to 200 Questions in 1 Write)
+  // Uploaded / Parsed Mock Questions State (Local Memory Preview first -> 1 Write Firestore Global Sync)
   const [uploadedQuestions, setUploadedQuestions] = useState<PublicQuestion[]>([]);
   const [uploadSourceFormat, setUploadSourceFormat] = useState<'json' | 'html'>('json');
+  const [detectedSchema, setDetectedSchema] = useState<string>('byteprep.mcq.v1');
+  const [syncStage, setSyncStage] = useState<'none' | 'local-memory' | 'global-firestore'>('none');
   const [uploadStatusMsg, setUploadStatusMsg] = useState<string | null>(null);
   const [uploadErrorMsg, setUploadErrorMsg] = useState<string | null>(null);
   const [syncingPaper, setSyncingPaper] = useState<boolean>(false);
+  const [loadingBundledJson, setLoadingBundledJson] = useState<boolean>(false);
+
+  // Interactive Question Preview State
+  const [showQuestionPreview, setShowQuestionPreview] = useState<boolean>(true);
+  const [previewSubjectFilter, setPreviewSubjectFilter] = useState<'ALL' | SubjectSlug>('ALL');
+  const [previewSearchText, setPreviewSearchText] = useState<string>('');
+  const [previewPage, setPreviewPage] = useState<number>(1);
+  const PREVIEW_PAGE_SIZE = 10;
+
+  const buildCurrentMockBlueprint = (
+    overrideMockId?: string,
+    overrideTitle?: string,
+    questionCount = uploadedQuestions.length || 200
+  ): MockBlueprint => {
+    const cleanMockId = (
+      overrideMockId ||
+      editMockId ||
+      `MOCK_${String(editDayNumber).padStart(2, '0')}`
+    )
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]/g, '_');
+
+    const titleToUse = (overrideTitle || editTitle || cleanMockId).trim();
+    return {
+      mockId: cleanMockId,
+      dayNumber: Math.max(1, Math.min(100, Number(editDayNumber || 1))),
+      title: titleToUse,
+      category: editCategory.trim() || 'DSSSB TGT Computer Science',
+      unlockDateIST: editUnlockDateIST,
+      enabled: editEnabled,
+      totalQuestions: questionCount,
+      durationMinutes: editDuration,
+      correctMarks: editCorrectMarks,
+      incorrectMarks: editIncorrectMarks,
+      unattemptedMarks: 0,
+      maxMarks: Number((questionCount * editCorrectMarks).toFixed(2)),
+      answerReleasePolicy: editReleasePolicy,
+      sections: DEFAULT_SECTIONS,
+    };
+  };
+
+  const syncQuestionsToLocalMemoryImmediate = async (
+    questions: PublicQuestion[],
+    format: 'json' | 'html',
+    schemaLabel: string,
+    sourceLabel: string,
+    overrideTitle?: string
+  ) => {
+    const mockBp = buildCurrentMockBlueprint(editMockId, overrideTitle, questions.length);
+    saveMockToLocalMemoryOnly({
+      mock: mockBp,
+      questions,
+      sourceFormat: format,
+    });
+    setUploadedQuestions(questions);
+    setUploadSourceFormat(format);
+    setDetectedSchema(schemaLabel);
+    setSyncStage('local-memory');
+    setPreviewSubjectFilter('ALL');
+    setPreviewSearchText('');
+    setPreviewPage(1);
+    setShowQuestionPreview(true);
+    setUploadStatusMsg(
+      `Step 1 Complete — Synced ${questions.length} questions from ${sourceLabel} (${schemaLabel}) into Local Memory (0 Firestore writes). Preview questions below, then click "Sync to Firestore (Global Sync in All Devices)" when ready.`
+    );
+    await onConfigUpdated();
+  };
 
   const handleStartCreatingNewMock = () => {
     const nextNum =
@@ -486,6 +710,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setEditIncorrectMarks(-0.25);
     setEditReleasePolicy('after-submission');
     setUploadedQuestions([]);
+    setSyncStage('none');
     setUploadStatusMsg(null);
     setUploadErrorMsg(null);
   };
@@ -511,18 +736,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           if (res && res.questions.length > 0) {
             setUploadedQuestions(res.questions);
             setUploadSourceFormat(res.paperDoc.sourceFormat || 'json');
+            setSyncStage(
+              currentMock.syncState === 'local-memory' ? 'local-memory' : 'global-firestore'
+            );
+            setPreviewPage(1);
             setUploadStatusMsg(
-              `Loaded ${res.questions.length} synced questions for ${currentMock.mockId} (${
-                res.fromCache ? '0-read Local Cache hit' : '1-read Firestore fetch'
-              }).`
+              currentMock.syncState === 'local-memory'
+                ? `Loaded ${res.questions.length} questions from Local Memory for ${currentMock.mockId}. Click "Sync to Firestore (Global Sync in All Devices)" to publish globally.`
+                : `Loaded ${res.questions.length} globally synced questions for ${currentMock.mockId} (${
+                    res.fromCache ? '0-read Local Cache hit' : '1-read Firestore fetch'
+                  }).`
             );
           } else {
             setUploadedQuestions([]);
+            setSyncStage('none');
             setUploadStatusMsg(null);
           }
         })
         .catch(() => {
           setUploadedQuestions([]);
+          setSyncStage('none');
         });
     }
   }, [currentMock, isCreatingNewMock]);
@@ -589,17 +822,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       const lowerName = file.name.toLowerCase();
       if (lowerName.endsWith('.html') || lowerName.endsWith('.htm')) {
         const parsed = parseUploadedHtmlQuestions(rawText, targetMockId);
-        setUploadedQuestions(parsed);
-        setUploadSourceFormat('html');
-        setUploadStatusMsg(
-          `Parsed ${parsed.length} questions from HTML file "${file.name}". Click "Publish Mock in Category (1 Write)" below to save.`
+        await syncQuestionsToLocalMemoryImmediate(
+          parsed,
+          'html',
+          'html.mcq.v1',
+          `"${file.name}"`
         );
       } else {
-        const parsed = parseUploadedJsonQuestions(rawText, targetMockId);
-        setUploadedQuestions(parsed);
-        setUploadSourceFormat('json');
-        setUploadStatusMsg(
-          `Parsed ${parsed.length} questions from JSON file "${file.name}". Click "Publish Mock in Category (1 Write)" below to save.`
+        const { questions, schemaName, detectedExamTitle } = parseUploadedJsonQuestions(
+          rawText,
+          targetMockId
+        );
+        const nextTitle =
+          detectedExamTitle && (isCreatingNewMock || editTitle.startsWith('DSSSB TGT CS Full Mock'))
+            ? detectedExamTitle
+            : editTitle;
+        if (nextTitle !== editTitle) {
+          setEditTitle(nextTitle);
+        }
+        await syncQuestionsToLocalMemoryImmediate(
+          questions,
+          'json',
+          schemaName,
+          `"${file.name}"`,
+          nextTitle
         );
       }
     } catch (err) {
@@ -611,17 +857,72 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
-  const handleGenerate200Questions = () => {
+  const handleLoadBundledMock01Json = async () => {
+    const targetMockId = editMockId.trim() || 'MOCK_01';
+    setLoadingBundledJson(true);
+    setUploadErrorMsg(null);
+    setUploadStatusMsg(null);
+    try {
+      const res = await fetch('/assets/aistudio/dsssb-tgt-cs-full-mock-01_bd63b762.json');
+      if (!res.ok) {
+        throw new Error('Could not fetch bundled DSSSB TGT CS Full Mock 01 JSON file.');
+      }
+      const rawText = await res.text();
+      const { questions, schemaName, detectedExamTitle } = parseUploadedJsonQuestions(
+        rawText,
+        targetMockId
+      );
+      const nextTitle = detectedExamTitle || editTitle;
+      if (detectedExamTitle) {
+        setEditTitle(detectedExamTitle);
+      }
+      await syncQuestionsToLocalMemoryImmediate(
+        questions,
+        'json',
+        schemaName,
+        'dsssb-tgt-cs-full-mock-01.json',
+        nextTitle
+      );
+    } catch (err) {
+      setUploadErrorMsg(
+        err instanceof Error ? err.message : 'Failed to load bundled JSON paper.'
+      );
+    } finally {
+      setLoadingBundledJson(false);
+    }
+  };
+
+  const handleGenerate200Questions = async () => {
     const targetMockId = editMockId.trim() || 'MOCK_01';
     setUploadErrorMsg(null);
     const generated = generateFull200QuestionsTemplate(
       targetMockId,
       editTitle || targetMockId
     );
-    setUploadedQuestions(generated);
-    setUploadSourceFormat('json');
-    setUploadStatusMsg(
-      `Prepared 200 DSSSB TGT CS questions (100 Part A + 100 Part B) for "${editTitle}". Click "Publish Mock in Category (1 Write)" to save.`
+    await syncQuestionsToLocalMemoryImmediate(
+      generated,
+      'json',
+      'mockrank.template.v1',
+      '200-Question Generator'
+    );
+  };
+
+  const handleManualLocalMemorySync = async () => {
+    const cleanMockId = (editMockId || `MOCK_${String(editDayNumber).padStart(2, '0')}`)
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]/g, '_');
+    const questionsToSync =
+      uploadedQuestions.length > 0
+        ? uploadedQuestions
+        : generateFull200QuestionsTemplate(cleanMockId, editTitle.trim() || cleanMockId);
+    await syncQuestionsToLocalMemoryImmediate(
+      questionsToSync,
+      uploadSourceFormat,
+      detectedSchema,
+      'Local Admin Editor'
+    );
+    setFeedbackMessage(
+      `Synced "${editTitle}" (${questionsToSync.length} questions) in Local Memory (0 Firestore writes).`
     );
   };
 
@@ -641,23 +942,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           ? uploadedQuestions
           : generateFull200QuestionsTemplate(cleanMockId, editTitle.trim() || cleanMockId);
 
-      const effectiveQuestionCount = questionsToSave.length;
-
       const updatedMock: MockBlueprint = {
-        mockId: cleanMockId,
-        dayNumber: Math.max(1, Math.min(100, Number(editDayNumber || 1))),
-        title: editTitle.trim() || cleanMockId,
-        category: editCategory.trim() || 'DSSSB TGT Computer Science',
-        unlockDateIST: editUnlockDateIST,
-        enabled: editEnabled,
-        totalQuestions: effectiveQuestionCount,
-        durationMinutes: editDuration,
-        correctMarks: editCorrectMarks,
-        incorrectMarks: editIncorrectMarks,
-        unattemptedMarks: 0,
-        maxMarks: Number((effectiveQuestionCount * editCorrectMarks).toFixed(2)),
-        answerReleasePolicy: editReleasePolicy,
-        sections: DEFAULT_SECTIONS,
+        ...buildCurrentMockBlueprint(cleanMockId, editTitle, questionsToSave.length),
+        syncState: 'global-firestore',
       };
 
       await saveMockConfigAdmin(updatedMock, adminUid, adminEmail);
@@ -679,8 +966,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       setIsCreatingNewMock(false);
       setSelectedMockId(cleanMockId);
       setUploadedQuestions(questionsToSave);
+      setSyncStage('global-firestore');
+      setUploadStatusMsg(
+        `Step 2 Complete — Globally synced ${questionsToSave.length} questions for "${updatedMock.title}" to Firestore in 1 write operation & cached locally!`
+      );
       setFeedbackMessage(
-        `Published "${updatedMock.title}" in category "${updatedMock.category}" (Unlock Date: ${editUnlockDateIST}) with ${questionsToSave.length} questions in 1 write operation!`
+        `Globally Synced "${updatedMock.title}" in category "${updatedMock.category}" (${questionsToSave.length} questions) to Firestore across all devices in 1 write operation!`
       );
     } catch (err) {
       setUploadErrorMsg(
@@ -973,34 +1264,51 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                 ) : (
                   <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-                    {blueprints.map((bp) => (
-                      <button
-                        key={bp.mockId}
-                        type="button"
-                        onClick={() => {
-                          setIsCreatingNewMock(false);
-                          setSelectedMockId(bp.mockId);
-                        }}
-                        className={`w-full text-left px-3.5 py-2.5 rounded-lg text-xs flex flex-col gap-0.5 cursor-pointer transition-colors ${
-                          !isCreatingNewMock && selectedMockId === bp.mockId
-                            ? 'bg-slate-900 text-white font-semibold'
-                            : 'bg-white border border-slate-200 hover:bg-slate-100 text-slate-800'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between w-full">
-                          <span className="font-mono font-bold">
-                            #{bp.dayNumber} · {bp.mockId}
-                          </span>
-                          <span className="font-mono text-[11px] opacity-80">
-                            {bp.unlockDateIST}
-                          </span>
-                        </div>
-                        <span className="truncate font-semibold">{bp.title}</span>
-                        <span className="truncate text-[10px] opacity-75">
-                          Category: {bp.category || 'DSSSB TGT Computer Science'}
-                        </span>
-                      </button>
-                    ))}
+                    {blueprints.map((bp) => {
+                      const isSelected = !isCreatingNewMock && selectedMockId === bp.mockId;
+                      const isLocalOnly = bp.syncState === 'local-memory';
+                      return (
+                        <button
+                          key={bp.mockId}
+                          type="button"
+                          onClick={() => {
+                            setIsCreatingNewMock(false);
+                            setSelectedMockId(bp.mockId);
+                          }}
+                          className={`w-full text-left px-3.5 py-2.5 rounded-lg text-xs flex flex-col gap-1 cursor-pointer transition-colors ${
+                            isSelected
+                              ? 'bg-slate-900 text-white font-semibold'
+                              : 'bg-white border border-slate-200 hover:bg-slate-100 text-slate-800'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full gap-1">
+                            <span className="font-mono font-bold">
+                              #{bp.dayNumber} · {bp.mockId}
+                            </span>
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${
+                                isLocalOnly
+                                  ? isSelected
+                                    ? 'bg-amber-400/20 text-amber-200 border border-amber-400/40'
+                                    : 'bg-amber-50 text-amber-800 border border-amber-200'
+                                  : isSelected
+                                  ? 'bg-emerald-400/20 text-emerald-200 border border-emerald-400/40'
+                                  : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              }`}
+                            >
+                              {isLocalOnly ? 'LOCAL MEMORY' : 'GLOBAL FIRESTORE'}
+                            </span>
+                          </div>
+                          <span className="truncate font-semibold">{bp.title}</span>
+                          <div className="flex items-center justify-between text-[10px] opacity-75">
+                            <span className="truncate">
+                              {bp.category || 'DSSSB TGT Computer Science'}
+                            </span>
+                            <span className="font-mono shrink-0">{bp.unlockDateIST}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1010,13 +1318,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 onSubmit={handleSaveMockAndSyncQuestions}
                 className="lg:col-span-8 space-y-5"
               >
-                <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                  <div>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                  <div className="flex items-center gap-2.5">
                     <h3 className="text-base font-bold text-slate-900">
                       {isCreatingNewMock
                         ? `Add New Mock Test (${editMockId})`
                         : `Edit Mock Test: ${editTitle} (${editMockId})`}
                     </h3>
+                    {syncStage === 'local-memory' && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-300">
+                        <HardDrive className="w-3 h-3" />
+                        <span>Synced in Local Memory (Ready for Preview)</span>
+                      </span>
+                    )}
+                    {syncStage === 'global-firestore' && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-mono font-bold bg-emerald-50 text-emerald-900 border border-emerald-300">
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>Synced Globally in Firestore (All Devices)</span>
+                      </span>
+                    )}
                   </div>
 
                   {!isCreatingNewMock && currentMock && (
@@ -1156,21 +1476,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                 </div>
 
-                {/* Question File Upload Box (JSON or HTML -> 200 Questions in 1 Read/Write Operation) */}
+                {/* STEP 1 & STEP 2: Question Upload, Local Memory Sync, Interactive Preview & Global Firestore Sync */}
                 <div className="p-5 rounded-xl border border-slate-200 bg-slate-50 space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-sm font-bold text-slate-900">
-                      Upload Mock Questions (JSON or HTML File — 1 Write Operation)
+                    <div>
+                      <div className="text-sm font-bold text-slate-900">
+                        Step 1: Upload JSON (`byteprep.mcq.v1`) / HTML → Preview &amp; Sync in Local Memory First
+                      </div>
+                      <div className="text-xs text-slate-600 mt-0.5">
+                        Questions are parsed &amp; cached in Local Memory immediately (0 Firestore writes) so you can verify every question, option, and answer key before Global Firestore Sync.
+                      </div>
                     </div>
-                    <span className="px-2.5 py-1 text-xs font-mono font-bold bg-white border border-slate-200 rounded text-slate-900">
-                      Loaded: {uploadedQuestions.length} Questions
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-1 text-xs font-mono font-bold bg-white border border-slate-200 rounded text-slate-900">
+                        Schema: {detectedSchema}
+                      </span>
+                      <span className="px-2.5 py-1 text-xs font-mono font-bold bg-slate-900 text-white rounded">
+                        Loaded: {uploadedQuestions.length} Qs
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-2.5">
                     <label className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg cursor-pointer">
                       <FileJson className="w-3.5 h-3.5" />
-                      <span>Upload .JSON or .HTML Question File</span>
+                      <span>Upload .JSON (`byteprep.mcq.v1`) or .HTML File</span>
                       <input
                         type="file"
                         accept=".json,.html,.htm,application/json,text/html"
@@ -1181,76 +1511,333 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                     <button
                       type="button"
+                      disabled={loadingBundledJson}
+                      onClick={handleLoadBundledMock01Json}
+                      className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-slate-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-700" />
+                      <span>
+                        {loadingBundledJson
+                          ? 'Loading Attached Mock 01 JSON...'
+                          : 'Load Attached dsssb-tgt-cs-full-mock-01.json (200 Qs)'}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={handleGenerate200Questions}
-                      className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-800 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg cursor-pointer"
+                      className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-slate-800 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg cursor-pointer"
                     >
                       <FileCode2 className="w-3.5 h-3.5" />
-                      <span>Generate 200-Question Full Paper (Part A + Part B)</span>
+                      <span>Generate 200-Q Template</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleManualLocalMemorySync}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-800 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg cursor-pointer"
+                    >
+                      <HardDrive className="w-3.5 h-3.5" />
+                      <span>Sync to Local Memory Only (0 Writes)</span>
                     </button>
                   </div>
 
                   {uploadStatusMsg && (
-                    <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-900">
+                    <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 font-medium">
                       {uploadStatusMsg}
                     </div>
                   )}
 
                   {uploadErrorMsg && (
-                    <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-800">
+                    <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-800 font-medium">
                       {uploadErrorMsg}
                     </div>
                   )}
 
                   {uploadedQuestions.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="text-xs font-semibold text-slate-700">
-                        Section Distribution ({uploadedQuestions.length} Total):
+                    <div className="space-y-4 pt-1">
+                      {/* Section Distribution Summary */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-800">
+                            Section Distribution ({uploadedQuestions.length} Total Questions — Click a Section to Filter Preview):
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setShowQuestionPreview((prev) => !prev)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-slate-800 bg-white border border-slate-300 rounded hover:bg-slate-100 cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>
+                              {showQuestionPreview ? 'Hide Question Preview' : 'Show Question Preview'}
+                            </span>
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPreviewSubjectFilter('ALL');
+                              setPreviewPage(1);
+                              setShowQuestionPreview(true);
+                            }}
+                            className={`p-2 rounded border flex items-center justify-between cursor-pointer text-left ${
+                              previewSubjectFilter === 'ALL'
+                                ? 'bg-slate-900 text-white border-slate-900 font-semibold'
+                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            <span className="truncate">All Sections</span>
+                            <span className="font-mono font-bold">
+                              {uploadedQuestions.length} Qs
+                            </span>
+                          </button>
+
+                          {VALID_SUBJECTS.map((subj) => {
+                            const count = uploadedQuestions.filter(
+                              (q) => q.subject === subj
+                            ).length;
+                            const isSelectedSubj = previewSubjectFilter === subj;
+                            return (
+                              <button
+                                key={subj}
+                                type="button"
+                                onClick={() => {
+                                  setPreviewSubjectFilter(subj);
+                                  setPreviewPage(1);
+                                  setShowQuestionPreview(true);
+                                }}
+                                className={`p-2 rounded border flex items-center justify-between cursor-pointer text-left ${
+                                  isSelectedSubj
+                                    ? 'bg-slate-900 text-white border-slate-900 font-semibold'
+                                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                                }`}
+                              >
+                                <span className="truncate">{subj}</span>
+                                <span className="font-mono font-bold">{count} Qs</span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                        {VALID_SUBJECTS.map((subj) => {
-                          const count = uploadedQuestions.filter(
-                            (q) => q.subject === subj
-                          ).length;
+
+                      {/* Interactive Question Preview Panel */}
+                      {showQuestionPreview && (() => {
+                        const filteredPreviewQuestions = uploadedQuestions.filter((q, idx) => {
+                          if (previewSubjectFilter !== 'ALL' && q.subject !== previewSubjectFilter) {
+                            return false;
+                          }
+                          if (!previewSearchText.trim()) return true;
+                          const queryStr = previewSearchText.toLowerCase().trim();
+                          const qNumStr = String(q.questionNumber || idx + 1);
                           return (
-                            <div
-                              key={subj}
-                              className="p-2 rounded bg-white border border-slate-200 flex items-center justify-between"
-                            >
-                              <span className="truncate text-slate-600">{subj}</span>
-                              <span className="font-mono font-bold text-slate-900">
-                                {count} Qs
-                              </span>
-                            </div>
+                            qNumStr === queryStr ||
+                            `q${qNumStr}` === queryStr ||
+                            q.id.toLowerCase().includes(queryStr) ||
+                            q.question.toLowerCase().includes(queryStr) ||
+                            q.topic.toLowerCase().includes(queryStr) ||
+                            q.options.some((o) => o.toLowerCase().includes(queryStr))
                           );
-                        })}
-                      </div>
+                        });
+
+                        const totalPages = Math.max(
+                          1,
+                          Math.ceil(filteredPreviewQuestions.length / PREVIEW_PAGE_SIZE)
+                        );
+                        const safePage = Math.min(previewPage, totalPages);
+                        const pageSlice = filteredPreviewQuestions.slice(
+                          (safePage - 1) * PREVIEW_PAGE_SIZE,
+                          safePage * PREVIEW_PAGE_SIZE
+                        );
+
+                        return (
+                          <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
+                              <div>
+                                <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                                  <Eye className="w-3.5 h-3.5 text-slate-700" />
+                                  <span>
+                                    Local Memory Question Preview ({filteredPreviewQuestions.length} matching questions)
+                                  </span>
+                                </div>
+                                <div className="text-[11px] text-slate-500">
+                                  Showing options (a, b, c, d), verified 0-based/1-based answer key, and explanation from JSON
+                                </div>
+                              </div>
+
+                              <div className="relative w-full sm:w-64">
+                                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
+                                <input
+                                  type="text"
+                                  value={previewSearchText}
+                                  onChange={(e) => {
+                                    setPreviewSearchText(e.target.value);
+                                    setPreviewPage(1);
+                                  }}
+                                  placeholder="Search Q#, stem, option, topic..."
+                                  className="w-full pl-8 pr-2.5 py-1.5 text-xs border border-slate-200 rounded-lg"
+                                />
+                              </div>
+                            </div>
+
+                            {pageSlice.length === 0 ? (
+                              <div className="py-6 text-center text-xs text-slate-500">
+                                No questions match your current filter/search.
+                              </div>
+                            ) : (
+                              <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1">
+                                {pageSlice.map((q) => {
+                                  const displayNum = q.questionNumber || 1;
+                                  const optionLabels = ['a', 'b', 'c', 'd'];
+                                  return (
+                                    <div
+                                      key={q.id}
+                                      className="p-3.5 rounded-lg border border-slate-200 bg-slate-50/60 space-y-2.5"
+                                    >
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                          <span className="px-2 py-0.5 rounded bg-slate-900 text-white font-mono text-xs font-bold">
+                                            Q{displayNum}
+                                          </span>
+                                          <span className="px-2 py-0.5 rounded bg-white border border-slate-200 font-mono text-[11px] text-slate-700">
+                                            {q.part || inferPartFromSubject(q.subject)} · {q.subject}
+                                          </span>
+                                          <span className="px-2 py-0.5 rounded bg-white border border-slate-200 text-[11px] text-slate-600">
+                                            {q.topic}
+                                          </span>
+                                        </div>
+                                        <span className="font-mono text-[10px] text-slate-400">
+                                          ID: {q.id}
+                                        </span>
+                                      </div>
+
+                                      <div className="text-xs sm:text-sm font-semibold text-slate-900 whitespace-pre-line leading-relaxed">
+                                        {q.question}
+                                      </div>
+
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        {q.options.map((optText, optIdx) => {
+                                          const isCorrect = q.correctIndex === optIdx;
+                                          return (
+                                            <div
+                                              key={optIdx}
+                                              className={`px-3 py-2 rounded-lg border text-xs flex items-start gap-2 ${
+                                                isCorrect
+                                                  ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-semibold'
+                                                  : 'bg-white border-slate-200 text-slate-700'
+                                              }`}
+                                            >
+                                              <span
+                                                className={`font-mono uppercase px-1.5 py-0.2 rounded text-[11px] shrink-0 ${
+                                                  isCorrect
+                                                    ? 'bg-emerald-700 text-white font-bold'
+                                                    : 'bg-slate-100 text-slate-600'
+                                                }`}
+                                              >
+                                                {optionLabels[optIdx] || optIdx + 1}
+                                              </span>
+                                              <span className="flex-1 break-words">{optText}</span>
+                                              {isCorrect && (
+                                                <span className="text-[10px] font-mono font-bold text-emerald-700 shrink-0">
+                                                  ✓ CORRECT
+                                                </span>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+
+                                      {q.explanation && (
+                                        <div className="p-2.5 rounded bg-white border border-slate-200 text-[11px] text-slate-600 leading-relaxed">
+                                          <span className="font-bold text-slate-800 mr-1">
+                                            Explanation:
+                                          </span>
+                                          {q.explanation}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {/* Pagination Controls */}
+                            <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-xs">
+                              <span className="text-slate-600 font-mono">
+                                Page {safePage} of {totalPages} ({filteredPreviewQuestions.length}{' '}
+                                questions)
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  disabled={safePage <= 1}
+                                  onClick={() => setPreviewPage((p) => Math.max(1, p - 1))}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                                >
+                                  <ChevronLeft className="w-3.5 h-3.5" />
+                                  <span>Prev</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={safePage >= totalPages}
+                                  onClick={() =>
+                                    setPreviewPage((p) => Math.min(totalPages, p + 1))
+                                  }
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                                >
+                                  <span>Next</span>
+                                  <ChevronRight className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
 
-                <div className="flex items-center justify-between pt-2">
-                  <label className="flex items-center gap-2 text-xs font-semibold text-slate-800 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editEnabled}
-                      onChange={(e) => setEditEnabled(e.target.checked)}
-                      className="rounded border-slate-300"
-                    />
-                    <span>Enable Mock once Unlock Date is reached</span>
-                  </label>
+                {/* STEP 2: Global Sync to Firestore Action Bar */}
+                <div className="p-4 rounded-xl border border-slate-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-800 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editEnabled}
+                        onChange={(e) => setEditEnabled(e.target.checked)}
+                        className="rounded border-slate-300"
+                      />
+                      <span>Enable Mock once Unlock Date is reached</span>
+                    </label>
+                    <p className="text-[11px] text-slate-500">
+                      Step 2 pushes the locally previewed Mock &amp; all {uploadedQuestions.length || 200} questions to Firestore in 1 write operation for global sync across all devices.
+                    </p>
+                  </div>
 
-                  <button
-                    type="submit"
-                    disabled={syncingPaper}
-                    className="flex items-center gap-2 px-5 py-2.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg cursor-pointer"
-                  >
-                    <Save className="w-3.5 h-3.5" />
-                    <span>
-                      {syncingPaper
-                        ? 'Publishing in 1 Write...'
-                        : 'Publish Mock in Category (1 Write)'}
-                    </span>
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleManualLocalMemorySync}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg cursor-pointer"
+                    >
+                      <HardDrive className="w-3.5 h-3.5" />
+                      <span>Save in Local Memory First</span>
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={syncingPaper}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg cursor-pointer"
+                    >
+                      <CloudUpload className="w-4 h-4" />
+                      <span>
+                        {syncingPaper
+                          ? 'Syncing Globally to Firestore (1 Write)...'
+                          : 'Sync to Firestore (Global Sync in All Devices — 1 Write)'}
+                      </span>
+                    </button>
+                  </div>
                 </div>
               </form>
             </div>

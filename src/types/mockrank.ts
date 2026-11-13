@@ -31,10 +31,13 @@ export interface MockBlueprint {
   unlockDateIST: string;
   isUnlockedByServerTime?: boolean;
   customPaperVersion?: number;
+  syncState?: 'local-memory' | 'global-firestore';
 }
 
 export interface PublicQuestion {
   id: string;
+  questionNumber?: number;
+  exam?: string;
   topic: string;
   difficulty: 'easy' | 'medium' | 'hard';
   question: string;

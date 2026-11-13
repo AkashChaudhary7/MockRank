@@ -180,6 +180,85 @@ export async function updateCandidateProfileInfo(
   }
 }
 
+const LOCAL_MOCK_CONFIGS_KEY = 'mockrank_local_mock_configs';
+
+export function readLocalMemoryMockConfigs(): Record<string, MockBlueprint> {
+  try {
+    const raw = localStorage.getItem(LOCAL_MOCK_CONFIGS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, MockBlueprint>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function writeLocalMemoryMockConfigs(map: Record<string, MockBlueprint>): void {
+  try {
+    localStorage.setItem(LOCAL_MOCK_CONFIGS_KEY, JSON.stringify(map));
+  } catch {
+    // Ignore storage quota warnings
+  }
+}
+
+/**
+ * Local Memory Sync Only (0 Firestore Reads/Writes):
+ * Saves the parsed mock blueprint & 200-question paper into localStorage first so the admin
+ * can preview and test questions locally before syncing globally to Firestore across all devices.
+ */
+export function saveMockToLocalMemoryOnly(params: {
+  mock: MockBlueprint;
+  questions: PublicQuestion[];
+  sourceFormat: 'json' | 'html';
+}): MockPaperDocument {
+  const safeMockId = sanitizeId(params.mock.mockId).slice(0, 32);
+  const trimmedQuestions = params.questions.slice(0, 200);
+  const questionsJson = JSON.stringify(trimmedQuestions);
+  const nowIso = new Date().toISOString().slice(0, 40);
+  const version = Math.floor(Date.now() / 1000);
+
+  const localPaperDoc: MockPaperDocument = {
+    mockId: safeMockId,
+    dayNumber: Math.max(1, Math.min(100, Number(params.mock.dayNumber || 1))),
+    title: sanitizeString(params.mock.title, BLUEPRINT_CONSTRAINTS.TITLE_MAX_LEN, safeMockId),
+    category: sanitizeString(
+      params.mock.category || 'DSSSB TGT Computer Science',
+      80,
+      'DSSSB TGT Computer Science'
+    ),
+    unlockDateIST: (params.mock.unlockDateIST || new Date().toISOString().slice(0, 10)).slice(
+      0,
+      20
+    ),
+    durationMinutes: Math.max(5, Math.min(300, Number(params.mock.durationMinutes || 120))),
+    correctMarks: Number(params.mock.correctMarks || 1),
+    incorrectMarks: Number(params.mock.incorrectMarks ?? -0.25),
+    totalQuestions: trimmedQuestions.length,
+    questionCount: trimmedQuestions.length,
+    version,
+    sourceFormat: params.sourceFormat,
+    questionsJson,
+    updatedAt: nowIso,
+  };
+
+  try {
+    localStorage.setItem(`mockrank_paper_cache_${safeMockId}`, JSON.stringify(localPaperDoc));
+  } catch {
+    // Ignore storage quota warnings
+  }
+
+  const localConfigs = readLocalMemoryMockConfigs();
+  localConfigs[safeMockId] = {
+    ...params.mock,
+    mockId: safeMockId,
+    totalQuestions: trimmedQuestions.length,
+    syncState: 'local-memory',
+  };
+  writeLocalMemoryMockConfigs(localConfigs);
+
+  return localPaperDoc;
+}
+
 /**
  * 1-Write Operation: Saves up to 200 questions for a Mock in a single Firestore document
  * (/mock_papers/{mockId}) and caches it locally in localStorage so zero repeat writes/reads occur.
@@ -234,6 +313,11 @@ export async function saveMockPaperSingleWrite(params: {
     // Store immediately in localStorage cache so client needs 0 reads next time
     try {
       localStorage.setItem(`mockrank_paper_cache_${safeMockId}`, JSON.stringify(localPaperDoc));
+      const localConfigs = readLocalMemoryMockConfigs();
+      if (localConfigs[safeMockId]) {
+        delete localConfigs[safeMockId];
+        writeLocalMemoryMockConfigs(localConfigs);
+      }
     } catch {
       // Ignore storage quota warnings
     }
@@ -800,21 +884,25 @@ export async function fetchMockConfigOverrides(): Promise<Record<string, Partial
 }
 
 /**
- * Fetches ONLY Mocks added by the Admin in /mock_configs, organized with their Category,
- * Mock Name (title), and Unlock Date (unlockDateIST). Once unlocked, remains available permanently.
+ * Fetches ONLY Mocks added by the Admin in /mock_configs (plus any staged in Local Memory),
+ * organized with their Category, Mock Name (title), and Unlock Date (unlockDateIST).
+ * Once unlocked, remains available permanently.
  */
 export async function fetchAdminCreatedMocks(currentISTDate: string): Promise<MockBlueprint[]> {
   const path = 'mock_configs';
   try {
     const q = query(collection(db, 'mock_configs'), where('dayNumber', '>=', 1));
     const snap = await getDocs(q);
-    const list: MockBlueprint[] = snap.docs.map((d) => {
+    const firestoreMap: Record<string, MockBlueprint> = {};
+
+    for (const d of snap.docs) {
       const raw = d.data() as Partial<MockBlueprint> & { mockId: string };
+      const mockId = raw.mockId || d.id;
       const unlockDateIST = raw.unlockDateIST || currentISTDate;
       const totalQ = Number(raw.totalQuestions || 200);
       const correctMarks = Number(raw.correctMarks ?? 1);
-      return {
-        mockId: raw.mockId || d.id,
+      firestoreMap[mockId] = {
+        mockId,
         dayNumber: Number(raw.dayNumber || 1),
         title: raw.title || raw.mockId || 'DSSSB Mock Test',
         category: raw.category || 'DSSSB TGT Computer Science',
@@ -829,9 +917,39 @@ export async function fetchAdminCreatedMocks(currentISTDate: string): Promise<Mo
         answerReleasePolicy: raw.answerReleasePolicy || 'after-submission',
         sections: DEFAULT_SECTIONS_BLUEPRINT,
         isUnlockedByServerTime: currentISTDate >= unlockDateIST,
+        syncState: 'global-firestore',
       };
-    });
-    return list.sort((a, b) => a.dayNumber - b.dayNumber);
+    }
+
+    const localConfigs = readLocalMemoryMockConfigs();
+    for (const [localId, localBp] of Object.entries(localConfigs)) {
+      if (!firestoreMap[localId]) {
+        const unlockDateIST = localBp.unlockDateIST || currentISTDate;
+        const totalQ = Number(localBp.totalQuestions || 200);
+        const correctMarks = Number(localBp.correctMarks ?? 1);
+        firestoreMap[localId] = {
+          ...localBp,
+          mockId: localId,
+          dayNumber: Number(localBp.dayNumber || 1),
+          title: localBp.title || localId,
+          category: localBp.category || 'DSSSB TGT Computer Science',
+          unlockDateIST,
+          enabled: localBp.enabled ?? true,
+          totalQuestions: totalQ,
+          durationMinutes: Number(localBp.durationMinutes || 120),
+          correctMarks,
+          incorrectMarks: Number(localBp.incorrectMarks ?? -0.25),
+          unattemptedMarks: 0,
+          maxMarks: Number(localBp.maxMarks || totalQ * correctMarks),
+          answerReleasePolicy: localBp.answerReleasePolicy || 'after-submission',
+          sections: DEFAULT_SECTIONS_BLUEPRINT,
+          isUnlockedByServerTime: currentISTDate >= unlockDateIST,
+          syncState: 'local-memory',
+        };
+      }
+    }
+
+    return Object.values(firestoreMap).sort((a, b) => a.dayNumber - b.dayNumber);
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
   }
@@ -893,6 +1011,17 @@ export async function deleteMockAdmin(
   const safeMockId = sanitizeId(mockId).slice(0, 32);
   const path = `mock_configs/${safeMockId}`;
   try {
+    try {
+      localStorage.removeItem(`mockrank_paper_cache_${safeMockId}`);
+      const localConfigs = readLocalMemoryMockConfigs();
+      if (localConfigs[safeMockId]) {
+        delete localConfigs[safeMockId];
+        writeLocalMemoryMockConfigs(localConfigs);
+      }
+    } catch {
+      // Ignore storage errors
+    }
+
     const batch = writeBatch(db);
     batch.delete(doc(db, 'mock_configs', safeMockId));
     const eventId = sanitizeId(`evt_delmock_${Date.now()}`);
