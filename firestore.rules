@@ -374,22 +374,14 @@ service cloud.firestore {
       allow update: if isValidId(attemptId) && isValidExamAttempt(incoming()) &&
         incoming().attemptId == existing().attemptId &&
         incoming().uid == existing().uid &&
-        incoming().mockId == existing().mockId &&
-        incoming().startedAt == existing().startedAt && (
+        incoming().mockId == existing().mockId && (
           isAdmin() ||
           (isOwner(existing().uid) &&
-            existing().status == 'in-progress' &&
-            incoming().status == 'in-progress' &&
             incoming().diff(existing()).affectedKeys().hasOnly([
-              'responses', 'markedForReview', 'lastHeartbeatAt', 'timeTakenSeconds', 'updatedAt'
-            ])) ||
-          (isOwner(existing().uid) &&
-            existing().status == 'in-progress' &&
-            incoming().status == 'completed' &&
-            incoming().diff(existing()).affectedKeys().hasOnly([
-              'status', 'submittedAt', 'lastHeartbeatAt', 'responses', 'markedForReview',
-              'score', 'partAScore', 'partBScore', 'correctAnswers', 'incorrectAnswers',
-              'unattemptedQuestions', 'accuracy', 'timeTakenSeconds', 'sectionScores', 'updatedAt'
+              'status', 'startedAt', 'expiresAt', 'submittedAt', 'lastHeartbeatAt',
+              'responses', 'markedForReview', 'score', 'partAScore', 'partBScore',
+              'correctAnswers', 'incorrectAnswers', 'unattemptedQuestions', 'accuracy',
+              'timeTakenSeconds', 'sectionScores', 'questionBankVersion', 'updatedAt'
             ]))
         );
 

@@ -24,6 +24,7 @@ import {
   LogOut,
   Moon,
   Play,
+  RotateCcw,
   Share2,
   Shield,
   Sun,
@@ -90,6 +91,8 @@ interface ActiveExamSession {
   sections: SectionBlueprint[];
   questions: PublicQuestion[];
   attempt: ExamAttempt;
+  mode?: 'exam' | 'solutions';
+  blueprint?: MockBlueprint;
   isCustomUploadedPaper?: boolean;
 }
 
@@ -652,7 +655,11 @@ export default function App() {
     }
   };
 
-  const startMockInternal = async (bp: MockBlueprint, verifiedUsername?: string) => {
+  const startMockInternal = async (
+    bp: MockBlueprint,
+    verifiedUsername?: string,
+    options?: { forceReattempt?: boolean; mode?: 'exam' | 'solutions' }
+  ) => {
     if (!bp.isUnlockedByServerTime && !isAdmin) {
       setBannerMessage(`${bp.title} unlocks on ${bp.unlockDateIST} (IST).`);
       return;
@@ -673,6 +680,7 @@ export default function App() {
         startDateIST: challengeConfig.startDateIST,
         isPaused: challengeConfig.isPaused,
         blueprintOverride: bp,
+        syncedQuestions: syncedPaper?.questions,
         isAdminPreview: isAdmin,
       });
 
@@ -694,9 +702,14 @@ export default function App() {
         expiresAt: paperData.expiresAtUTC,
         questionBankVersion:
           syncedPaper?.paperDoc?.version || paperData.questionBankVersion || 1,
+        forceReattempt: Boolean(options?.forceReattempt),
       });
 
-      if (attemptDoc.status === 'completed') {
+      if (
+        attemptDoc.status === 'completed' &&
+        !options?.forceReattempt &&
+        options?.mode !== 'solutions'
+      ) {
         openResultPage(attemptDoc);
         return;
       }
@@ -718,6 +731,12 @@ export default function App() {
         sections: paperData.sections,
         questions: finalQuestions,
         attempt: attemptDoc,
+        mode:
+          options?.mode ||
+          (attemptDoc.status === 'completed' && !options?.forceReattempt
+            ? 'solutions'
+            : 'exam'),
+        blueprint: bp,
         isCustomUploadedPaper: Boolean(syncedPaper && syncedPaper.questions.length > 0),
       });
     } catch (err) {
@@ -727,7 +746,10 @@ export default function App() {
     }
   };
 
-  const handleStartMock = async (bp: MockBlueprint) => {
+  const handleStartMock = async (
+    bp: MockBlueprint,
+    options?: { forceReattempt?: boolean; mode?: 'exam' | 'solutions' }
+  ) => {
     if (!firebaseUser) {
       await handleGoogleSignIn();
       return;
@@ -740,7 +762,7 @@ export default function App() {
       return;
     }
 
-    await startMockInternal(bp, currentUsername);
+    await startMockInternal(bp, currentUsername, options);
   };
 
   const handleExamAutosave = async (
@@ -833,8 +855,17 @@ export default function App() {
         sections={activeExam.sections}
         questions={activeExam.questions}
         attempt={activeExam.attempt}
+        initialMode={activeExam.mode || 'exam'}
         darkMode={darkMode}
         onToggleDarkMode={() => setDarkMode((d) => !d)}
+        onReattemptMock={async () => {
+          const bp =
+            activeExam.blueprint ||
+            blueprints.find((b) => b.mockId === activeExam.mockId);
+          if (bp) {
+            await handleStartMock(bp, { forceReattempt: true, mode: 'exam' });
+          }
+        }}
         onAutosave={handleExamAutosave}
         onSubmitFinal={handleExamFinalSubmit}
         onExitWithoutSubmit={() => {
@@ -1147,6 +1178,18 @@ export default function App() {
             onBackToMocks={() => setActiveNav('mocks')}
             onBackToDashboard={() => setActiveNav('dashboard')}
             onOpenLeaderboard={(mockId) => openLeaderboardPage(mockId)}
+            onReattemptMock={() => {
+              const bp = blueprints.find((b) => b.mockId === viewingResultAttempt.mockId);
+              if (bp) {
+                handleStartMock(bp, { forceReattempt: true, mode: 'exam' });
+              }
+            }}
+            onOpenMockSolutionsScreen={() => {
+              const bp = blueprints.find((b) => b.mockId === viewingResultAttempt.mockId);
+              if (bp) {
+                handleStartMock(bp, { mode: 'solutions' });
+              }
+            }}
           />
         ) : activeNav === 'leaderboard' ? (
           /* Dedicated Full-Page View for Leaderboard (Not Popup Mode) */
@@ -1577,7 +1620,21 @@ export default function App() {
                                     className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-white dark:text-slate-950 bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-slate-200 rounded-lg cursor-pointer"
                                   >
                                     <CheckCircle2 className="w-3.5 h-3.5" />
-                                    <span>Score &amp; Analysis</span>
+                                    <span>Scorecard</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={startingMockId === bp.mockId}
+                                    onClick={() =>
+                                      handleStartMock(bp, { forceReattempt: true, mode: 'exam' })
+                                    }
+                                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-sky-900 dark:text-sky-200 bg-sky-50 dark:bg-sky-950/70 hover:bg-sky-100 dark:hover:bg-sky-900 border border-sky-300 dark:border-sky-700 rounded-lg cursor-pointer"
+                                    title="Reattempt Question Paper"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                    <span>
+                                      {startingMockId === bp.mockId ? 'Loading...' : 'Reattempt'}
+                                    </span>
                                   </button>
                                   <button
                                     type="button"
@@ -1615,6 +1672,18 @@ export default function App() {
                                 </button>
                               )}
                             </div>
+
+                            {isCompleted && attempt && (
+                              <button
+                                type="button"
+                                disabled={startingMockId === bp.mockId}
+                                onClick={() => handleStartMock(bp, { mode: 'solutions' })}
+                                className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-900 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/80 border border-emerald-200 dark:border-emerald-800 rounded-lg cursor-pointer"
+                              >
+                                <BookOpen className="w-3.5 h-3.5" />
+                                <span>View Detailed Solutions in Mock Screen</span>
+                              </button>
+                            )}
 
                             {/* Share Mock Test / Share Mock Score in Text Format with Link Below */}
                             <div className="flex items-center gap-2">

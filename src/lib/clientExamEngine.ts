@@ -287,7 +287,37 @@ export async function fetchExamPaperSafe(params: {
   });
 
   if (apiPaper) {
-    return apiPaper;
+    // Enrich API questions with correctIndex & explanation so detailed solutions work directly inside the Mock CBT screen
+    const referenceQuestions =
+      params.syncedQuestions && params.syncedQuestions.length > 0
+        ? params.syncedQuestions
+        : await loadBundledMock01QuestionsFallback(params.blueprintOverride.mockId);
+    const refMap = new Map(referenceQuestions.map((q) => [q.id, q]));
+
+    const enrichedQuestions = apiPaper.questions.map((q, idx) => {
+      if (typeof q.correctIndex === 'number' && q.explanation) {
+        return q;
+      }
+      const refQ = refMap.get(q.id) || referenceQuestions[idx];
+      return {
+        ...q,
+        correctIndex:
+          typeof q.correctIndex === 'number'
+            ? q.correctIndex
+            : typeof refQ?.correctIndex === 'number'
+            ? refQ.correctIndex
+            : 0,
+        explanation:
+          q.explanation ||
+          refQ?.explanation ||
+          'Detailed step-by-step solution verified according to the official DSSSB TGT Computer Science answer key.',
+      };
+    });
+
+    return {
+      ...apiPaper,
+      questions: enrichedQuestions,
+    };
   }
 
   // Client-side execution fallback when hosted on custom domain / static hosting

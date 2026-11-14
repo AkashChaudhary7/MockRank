@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Copy,
   Lock,
+  RotateCcw,
   Share2,
   Trophy,
   XCircle,
@@ -35,6 +36,8 @@ interface MockResultPageProps {
   onBackToMocks: () => void;
   onBackToDashboard: () => void;
   onOpenLeaderboard: (mockId: string) => void;
+  onReattemptMock?: () => void;
+  onOpenMockSolutionsScreen?: () => void;
 }
 
 export const MockResultModal: React.FC<MockResultPageProps> = ({
@@ -52,6 +55,8 @@ export const MockResultModal: React.FC<MockResultPageProps> = ({
   onBackToMocks,
   onBackToDashboard,
   onOpenLeaderboard,
+  onReattemptMock,
+  onOpenMockSolutionsScreen,
 }) => {
   const [activeTab, setActiveTab] = useState<'summary' | 'solutions'>('summary');
   const [reviewItems, setReviewItems] = useState<QuestionReviewItem[]>([]);
@@ -241,7 +246,29 @@ export const MockResultModal: React.FC<MockResultPageProps> = ({
           </h1>
         </div>
 
-        <div className="grid grid-cols-1 xs:grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
+        <div className="grid grid-cols-1 xs:grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">
+          {onOpenMockSolutionsScreen && (
+            <button
+              type="button"
+              onClick={onOpenMockSolutionsScreen}
+              className="flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-emerald-900 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/70 hover:bg-emerald-100 dark:hover:bg-emerald-900 border border-emerald-300 dark:border-emerald-700 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>Solutions in Mock Screen</span>
+            </button>
+          )}
+
+          {onReattemptMock && (
+            <button
+              type="button"
+              onClick={onReattemptMock}
+              className="flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-sky-900 dark:text-sky-200 bg-sky-50 dark:bg-sky-950/70 hover:bg-sky-100 dark:hover:bg-sky-900 border border-sky-300 dark:border-sky-700 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reattempt Paper</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={handleShareScoreInTextFormat}

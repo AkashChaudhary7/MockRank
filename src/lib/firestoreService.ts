@@ -451,6 +451,7 @@ export async function createOrResumeExamAttempt(params: {
   startedAt: string;
   expiresAt: string;
   questionBankVersion: number;
+  forceReattempt?: boolean;
 }): Promise<ExamAttempt> {
   const safeUid = sanitizeId(params.uid);
   const safeMockId = sanitizeId(params.mockId).slice(0, BLUEPRINT_CONSTRAINTS.MOCK_ID_MAX_LEN);
@@ -462,7 +463,45 @@ export async function createOrResumeExamAttempt(params: {
     const existingSnap = await getDoc(attemptRef);
     if (existingSnap.exists()) {
       const data = existingSnap.data() as ExamAttempt;
-      return data;
+      if (!params.forceReattempt) {
+        return data;
+      }
+
+      const resetAttempt: ExamAttempt = {
+        ...data,
+        attemptId,
+        uid: safeUid,
+        mockId: safeMockId,
+        dayNumber: Math.max(1, Math.min(100, Math.round(params.dayNumber))),
+        status: 'in-progress',
+        startedAt: params.startedAt.slice(0, 40),
+        expiresAt: params.expiresAt.slice(0, 40),
+        lastHeartbeatAt: params.startedAt.slice(0, 40),
+        responses: {},
+        markedForReview: [],
+        timeTakenSeconds: 0,
+        questionBankVersion: Math.max(1, Math.round(params.questionBankVersion || 1)),
+      };
+
+      await updateDoc(attemptRef, {
+        status: 'in-progress',
+        startedAt: resetAttempt.startedAt,
+        expiresAt: resetAttempt.expiresAt,
+        lastHeartbeatAt: resetAttempt.lastHeartbeatAt,
+        responses: {},
+        markedForReview: [],
+        timeTakenSeconds: 0,
+        questionBankVersion: resetAttempt.questionBankVersion,
+        updatedAt: serverTimestamp(),
+      });
+
+      try {
+        localStorage.removeItem(`mockrank_backup_${attemptId}`);
+      } catch {
+        // Ignore storage error
+      }
+
+      return resetAttempt;
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, path);

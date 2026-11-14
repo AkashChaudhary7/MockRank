@@ -1,19 +1,24 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  BookOpen,
   Bookmark,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock,
+  Eye,
+  EyeOff,
   LayoutGrid,
   Lock,
   Maximize2,
   Moon,
+  RotateCcw,
   Send,
   Sun,
   Type,
   X,
+  XCircle,
 } from 'lucide-react';
 import {
   ExamAttempt,
@@ -34,8 +39,10 @@ interface ExamTerminalModalProps {
   sections: SectionBlueprint[];
   questions: PublicQuestion[];
   attempt: ExamAttempt;
+  initialMode?: 'exam' | 'solutions';
   darkMode?: boolean;
   onToggleDarkMode?: () => void;
+  onReattemptMock?: () => Promise<void> | void;
   onAutosave: (
     responses: Record<string, number>,
     markedForReview: string[],
@@ -102,6 +109,84 @@ const DSSSB_SECTION_ORDER: {
   },
 ];
 
+/**
+ * Formats a question stem into standard Testbook / TCS iON CBT layout:
+ * - Splits multi-line questions cleanly
+ * - Formats Statement I / II, Assertion (A) / Reason (R), numbered lists, and code blocks
+ */
+function renderStandardQuestionStem(rawQuestion: string) {
+  const cleaned = (rawQuestion || '').trim();
+  const lines = cleaned.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+
+  if (lines.length <= 1) {
+    return <p className="leading-relaxed">{cleaned}</p>;
+  }
+
+  return (
+    <div className="space-y-2.5">
+      {lines.map((line, idx) => {
+        const isStatementOrAssertion =
+          /^(Statement\s+[I123V]+|Assertion\s*\(A\)|Reason\s*\(R\)|Conclusion\s+[I123V]+|List\s*[-–]?\s*[I12]+)\s*[:.-]/i.test(
+            line
+          );
+        const isNumberedOrRomanItem =
+          /^(\([a-zA-Z0-9ivxIVX]+\)|[1-9]\.|[ivxIVX]+\.)\s+/.test(line);
+        const isCodeLike =
+          /[{};=<>]/.test(line) &&
+          /\b(int|void|char|float|double|return|printf|cout|cin|SELECT|FROM|WHERE|def|function|class|public|static|if|else|for|while)\b/.test(
+            line
+          );
+
+        if (isCodeLike) {
+          return (
+            <pre
+              key={idx}
+              className="p-3 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 font-mono text-xs sm:text-sm text-slate-900 dark:text-slate-100 overflow-x-auto whitespace-pre-wrap"
+            >
+              {line}
+            </pre>
+          );
+        }
+
+        if (isStatementOrAssertion) {
+          const colonIdx = line.indexOf(':');
+          const prefix = colonIdx > -1 ? line.slice(0, colonIdx + 1) : '';
+          const rest = colonIdx > -1 ? line.slice(colonIdx + 1).trim() : line;
+          return (
+            <div
+              key={idx}
+              className="p-2.5 sm:p-3 rounded-lg bg-slate-50 dark:bg-slate-900/70 border border-slate-200/80 dark:border-slate-800 leading-relaxed"
+            >
+              {prefix ? (
+                <>
+                  <strong className="font-bold text-slate-950 dark:text-white">{prefix} </strong>
+                  <span>{rest}</span>
+                </>
+              ) : (
+                <span>{line}</span>
+              )}
+            </div>
+          );
+        }
+
+        if (isNumberedOrRomanItem) {
+          return (
+            <div key={idx} className="pl-2 sm:pl-3 leading-relaxed">
+              {line}
+            </div>
+          );
+        }
+
+        return (
+          <p key={idx} className="leading-relaxed">
+            {line}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
   mockId,
   title,
@@ -112,25 +197,43 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
   incorrectMarks,
   questions,
   attempt,
+  initialMode = 'exam',
   darkMode,
   onToggleDarkMode,
+  onReattemptMock,
   onAutosave,
   onSubmitFinal,
   onExitWithoutSubmit,
 }) => {
+  const isCompletedAttempt = attempt.status === 'completed';
+  const [terminalMode, setTerminalMode] = useState<'exam' | 'solutions'>(
+    initialMode === 'solutions' || isCompletedAttempt ? 'solutions' : 'exam'
+  );
+  const isSolutionsMode = terminalMode === 'solutions';
+
   const [instructionsAccepted, setInstructionsAccepted] = useState<boolean>(
-    Object.keys(attempt.responses || {}).length > 0 || (attempt.timeTakenSeconds || 0) > 10
+    isSolutionsMode ||
+      Object.keys(attempt.responses || {}).length > 0 ||
+      (attempt.timeTakenSeconds || 0) > 10
   );
   const [declarationChecked, setDeclarationChecked] = useState<boolean>(false);
 
-  // Mobile-First UI Scale ('compact' by default on mobile viewports < 640px so question + 4 options fit without scrolling)
-  const [uiScale, setUiScale] = useState<MockUiScale>(() => {
-    if (typeof window !== 'undefined' && window.innerWidth < 640) {
-      return 'compact';
-    }
-    return 'standard';
-  });
+  // Standard Testbook/CBT Typography Scale ('standard' by default across devices; user can toggle A- / A / A+)
+  const [uiScale, setUiScale] = useState<MockUiScale>('standard');
   const [showMobilePalette, setShowMobilePalette] = useState<boolean>(false);
+
+  // Per-question inline solution visibility in Mock Screen (auto-enabled in solutions mode, toggleable anytime in exam mode)
+  const [showSolutionInMockScreen, setShowSolutionInMockScreen] = useState<boolean>(
+    isSolutionsMode
+  );
+  const [reattemptBusy, setReattemptBusy] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (isSolutionsMode) {
+      setShowSolutionInMockScreen(true);
+      setInstructionsAccepted(true);
+    }
+  }, [isSolutionsMode]);
 
   const cycleUiScale = () => {
     setUiScale((prev) =>
@@ -192,6 +295,20 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
     return init;
   });
 
+  // Sync responses if attempt prop changes (e.g., when user clicks Reattempt Paper)
+  useEffect(() => {
+    setResponses({ ...(attempt.responses || {}) });
+    setMarkedForReview(new Set(attempt.markedForReview || []));
+    if (attempt.status === 'in-progress' && initialMode !== 'solutions') {
+      setTerminalMode('exam');
+      setShowSolutionInMockScreen(false);
+      setLockedSections(new Set());
+      setActiveSectionIndex(0);
+      const firstIdx = orderedSections[0]?.questionIndices[0] ?? 0;
+      setCurrentIndex(firstIdx);
+    }
+  }, [attempt.attemptId, attempt.startedAt, attempt.status, initialMode, orderedSections]);
+
   // Authoritative remaining timer derived from attempt.expiresAt
   const computeRemainingSeconds = useCallback(() => {
     const expiryMs = new Date(attempt.expiresAt).getTime();
@@ -203,13 +320,12 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
 
   const [remainingSeconds, setRemainingSeconds] = useState<number>(computeRemainingSeconds);
 
-  // Per-Question 60-Second Timer (DSSSB Rule: 1-minute limit on any question except Mathematics & Reasoning)
+  // Standard Testbook-style elapsed question timer (no 1-minute auto-submit)
   const [questionSeconds, setQuestionSeconds] = useState<number>(0);
 
   const [warningBanner, setWarningBanner] = useState<string | null>(null);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
-  const [autosaveState, setAutosaveState] = useState<'saved' | 'saving'>('saved');
 
   const submittedRef = useRef<boolean>(false);
   const responsesRef = useRef(responses);
@@ -221,13 +337,14 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
   remainingRef.current = remainingSeconds;
 
   const currentQuestion = questions[currentIndex];
-  const isMathsOrReasoning =
-    currentQuestion?.subject === 'mathematics' || currentQuestion?.subject === 'reasoning';
 
-  // Reset per-question timer whenever the active question changes
+  // Reset per-question elapsed timer whenever the active question changes
   useEffect(() => {
     setQuestionSeconds(0);
-  }, [currentIndex]);
+    if (!isSolutionsMode) {
+      setShowSolutionInMockScreen(false);
+    }
+  }, [currentIndex, isSolutionsMode]);
 
   // Mark current question as visited when index changes
   useEffect(() => {
@@ -244,8 +361,9 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
   // LocalStorage backup key
   const localBackupKey = `mockrank_backup_${attempt.attemptId}`;
 
-  // Restore local backup if newer
+  // Restore local backup if in-progress exam
   useEffect(() => {
+    if (isSolutionsMode) return;
     try {
       const saved = localStorage.getItem(localBackupKey);
       if (saved) {
@@ -260,11 +378,11 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
     } catch {
       // Ignore local storage errors
     }
-  }, [localBackupKey]);
+  }, [isSolutionsMode, localBackupKey]);
 
   // Save to localStorage on every response or review update
   useEffect(() => {
-    if (!instructionsAccepted) return;
+    if (!instructionsAccepted || isSolutionsMode) return;
     try {
       localStorage.setItem(
         localBackupKey,
@@ -277,11 +395,11 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
     } catch {
       // Ignore quota errors
     }
-  }, [responses, markedForReview, instructionsAccepted, localBackupKey]);
+  }, [responses, markedForReview, instructionsAccepted, isSolutionsMode, localBackupKey]);
 
   const triggerFinalSubmit = useCallback(
     async (autoReason?: string) => {
-      if (submittedRef.current) return;
+      if (submittedRef.current || isSolutionsMode) return;
       submittedRef.current = true;
       setSubmitting(true);
 
@@ -305,12 +423,12 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
         autoReason
       );
     },
-    [durationMinutes, localBackupKey, onSubmitFinal]
+    [durationMinutes, isSolutionsMode, localBackupKey, onSubmitFinal]
   );
 
-  // 1-second authoritative exam countdown + per-question 60s timer
+  // 1-second authoritative exam countdown + Testbook-style elapsed question timer (NO 1-minute auto-submit)
   useEffect(() => {
-    if (!instructionsAccepted || submittedRef.current) return;
+    if (!instructionsAccepted || submittedRef.current || isSolutionsMode) return;
 
     const timer = window.setInterval(() => {
       const nextRem = computeRemainingSeconds();
@@ -321,35 +439,17 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
         return;
       }
 
-      setQuestionSeconds((prevSec) => {
-        const nextQSec = prevSec + 1;
-        if (!isMathsOrReasoning && nextQSec >= 60) {
-          window.clearInterval(timer);
-          triggerFinalSubmit(
-            `DSSSB 1-Minute Question Rule: You spent 60 seconds on a single question in ${
-              currentSection?.label || 'this section'
-            } (outside Mathematics & Reasoning). Exam submitted immediately.`
-          );
-        }
-        return nextQSec;
-      });
+      setQuestionSeconds((prevSec) => prevSec + 1);
     }, 1000);
 
     return () => window.clearInterval(timer);
-  }, [
-    computeRemainingSeconds,
-    currentSection?.label,
-    instructionsAccepted,
-    isMathsOrReasoning,
-    triggerFinalSubmit,
-  ]);
+  }, [computeRemainingSeconds, instructionsAccepted, isSolutionsMode, triggerFinalSubmit]);
 
   // Periodic Firestore autosave every 25 seconds
   useEffect(() => {
-    if (!instructionsAccepted || submittedRef.current) return;
+    if (!instructionsAccepted || submittedRef.current || isSolutionsMode) return;
 
     const interval = window.setInterval(async () => {
-      setAutosaveState('saving');
       const totalAllocated = durationMinutes * 60;
       const timeTaken = Math.max(1, totalAllocated - remainingRef.current);
       try {
@@ -358,17 +458,17 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
           Array.from(reviewRef.current),
           timeTaken
         );
-      } finally {
-        setAutosaveState('saved');
+      } catch {
+        // Ignore transient autosave error
       }
     }, 25000);
 
     return () => window.clearInterval(interval);
-  }, [durationMinutes, instructionsAccepted, onAutosave]);
+  }, [durationMinutes, instructionsAccepted, isSolutionsMode, onAutosave]);
 
-  // DSSSB Anti-Cheating Rule: Immediate Exam Submit on Screen / Window Resize
+  // Anti-Cheating Rule during active exam mode
   useEffect(() => {
-    if (!instructionsAccepted || submittedRef.current) return;
+    if (!instructionsAccepted || submittedRef.current || isSolutionsMode) return;
 
     let baselineWidth = window.innerWidth;
     let baselineHeight = window.innerHeight;
@@ -395,8 +495,6 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
       const deltaH = Math.abs(window.innerHeight - baselineHeight);
       const isTouchMobile = window.innerWidth < 768;
 
-      // On mobile browsers, vertical URL bar auto-hiding shifts innerHeight by ~50-90px;
-      // any width change (split-screen/rotation/window resize) or major height change (>140px on mobile, >15px on desktop) triggers immediate submit
       if (deltaW > 15 || (!isTouchMobile && deltaH > 15) || (isTouchMobile && deltaH > 140)) {
         triggerFinalSubmit(
           'DSSSB Anti-Cheating Rule: Screen/Window resize detected during active examination. Exam auto-submitted immediately.'
@@ -428,7 +526,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
       document.removeEventListener('contextmenu', handleContextMenu);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [instructionsAccepted, triggerFinalSubmit]);
+  }, [instructionsAccepted, isSolutionsMode, triggerFinalSubmit]);
 
   const requestExamFullscreen = () => {
     if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
@@ -442,8 +540,27 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
     setInstructionsAccepted(true);
   };
 
+  const handleTriggerReattemptFromMockScreen = async () => {
+    if (!onReattemptMock || reattemptBusy) return;
+    setReattemptBusy(true);
+    try {
+      submittedRef.current = false;
+      await onReattemptMock();
+      setTerminalMode('exam');
+      setShowSolutionInMockScreen(false);
+      setLockedSections(new Set());
+      setActiveSectionIndex(0);
+      const firstIdx = orderedSections[0]?.questionIndices[0] ?? 0;
+      setCurrentIndex(firstIdx);
+      setResponses({});
+      setMarkedForReview(new Set());
+    } finally {
+      setReattemptBusy(false);
+    }
+  };
+
   const handleSelectOption = (optionIdx: number) => {
-    if (!currentQuestion) return;
+    if (!currentQuestion || isSolutionsMode) return;
     if (lockedSections.has(currentQuestion.subject as SubjectSlug)) return;
     setResponses((prev) => ({
       ...prev,
@@ -452,7 +569,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
   };
 
   const handleClearResponse = () => {
-    if (!currentQuestion) return;
+    if (!currentQuestion || isSolutionsMode) return;
     if (lockedSections.has(currentQuestion.subject as SubjectSlug)) return;
     setResponses((prev) => {
       const next = { ...prev };
@@ -462,7 +579,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
   };
 
   const handleToggleMarkForReview = () => {
-    if (!currentQuestion) return;
+    if (!currentQuestion || isSolutionsMode) return;
     setMarkedForReview((prev) => {
       const next = new Set(prev);
       if (next.has(currentQuestion.id)) {
@@ -474,7 +591,19 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
     });
   };
 
-  // Navigate only within the currently active unlocked section
+  const handleMarkForReviewAndNext = () => {
+    if (!currentQuestion) return;
+    if (!isSolutionsMode) {
+      setMarkedForReview((prev) => {
+        const next = new Set(prev);
+        next.add(currentQuestion.id);
+        return next;
+      });
+    }
+    handleSaveAndNextInSection();
+  };
+
+  // Navigation within current section (or across sections when in Solutions Mode)
   const posInCurrentSection = currentSectionIndices.indexOf(currentIndex);
   const hasPrevInSection = posInCurrentSection > 0;
   const hasNextInSection =
@@ -483,12 +612,23 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
   const handlePrevInSection = () => {
     if (hasPrevInSection) {
       setCurrentIndex(currentSectionIndices[posInCurrentSection - 1]);
+    } else if (isSolutionsMode && activeSectionIndex > 0) {
+      const prevSecIdx = activeSectionIndex - 1;
+      const prevSecIndices = orderedSections[prevSecIdx]?.questionIndices || [];
+      setActiveSectionIndex(prevSecIdx);
+      setCurrentIndex(prevSecIndices[prevSecIndices.length - 1] ?? 0);
     }
   };
 
   const handleSaveAndNextInSection = () => {
     if (hasNextInSection) {
       setCurrentIndex(currentSectionIndices[posInCurrentSection + 1]);
+    } else if (isSolutionsMode) {
+      if (activeSectionIndex < orderedSections.length - 1) {
+        const nextSecIdx = activeSectionIndex + 1;
+        setActiveSectionIndex(nextSecIdx);
+        setCurrentIndex(orderedSections[nextSecIdx]?.questionIndices[0] ?? 0);
+      }
     } else {
       if (activeSectionIndex < orderedSections.length - 1) {
         setShowLockSectionConfirm(true);
@@ -524,11 +664,21 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
     let notVisited = 0;
     let markedOnly = 0;
     let answeredAndMarked = 0;
+    let correctCount = 0;
+    let wrongCount = 0;
 
     for (const q of questions) {
-      const isAns = typeof responses[q.id] === 'number';
+      const userAns = responses[q.id];
+      const isAns = typeof userAns === 'number';
       const isRev = markedForReview.has(q.id);
       const isVis = visitedIds.has(q.id);
+
+      if (isAns) {
+        if (typeof q.correctIndex === 'number') {
+          if (userAns === q.correctIndex) correctCount += 1;
+          else wrongCount += 1;
+        }
+      }
 
       if (isAns && isRev) {
         answeredAndMarked += 1;
@@ -560,6 +710,8 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
       answeredAndMarked,
       unattemptedTotal: questions.length - answered,
       sectionAnswered,
+      correctCount,
+      wrongCount,
     };
   }, [questions, responses, markedForReview, visitedIds, currentSectionIndices]);
 
@@ -575,31 +727,33 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
     return `${String(mins).padStart(2, '0')}:${String(remSec).padStart(2, '0')}`;
   };
 
-  // Dynamic Scale Classes for Question Stem & Options so Mock Format Scales Perfectly on Mobile
+  // Standard Testbook-style Typography & Spacing Scale
   const questionStemScaleClass =
     uiScale === 'compact'
-      ? 'py-3 sm:py-5 text-sm sm:text-base leading-snug sm:leading-relaxed'
+      ? 'text-sm sm:text-[15px] leading-relaxed'
       : uiScale === 'large'
-      ? 'py-4 sm:py-6 text-base sm:text-xl leading-relaxed'
-      : 'py-3.5 sm:py-6 text-[15px] sm:text-lg leading-relaxed';
+      ? 'text-base sm:text-lg leading-relaxed'
+      : 'text-[15px] sm:text-base leading-relaxed';
 
   const optionCardScaleClass =
     uiScale === 'compact'
-      ? 'p-2.5 sm:p-3.5 rounded-lg sm:rounded-xl gap-2.5 sm:gap-3'
+      ? 'px-3.5 py-2.5 sm:px-4 sm:py-3 rounded-lg gap-3'
       : uiScale === 'large'
-      ? 'p-3.5 sm:p-4 rounded-xl gap-3.5'
-      : 'p-3 sm:p-4 rounded-xl gap-3';
+      ? 'px-4 py-3.5 sm:px-5 sm:py-4 rounded-xl gap-3.5'
+      : 'px-3.5 py-3 sm:px-4 sm:py-3.5 rounded-lg gap-3';
 
   const optionTextScaleClass =
     uiScale === 'compact'
-      ? 'text-xs sm:text-sm leading-snug sm:leading-relaxed'
+      ? 'text-xs sm:text-sm leading-relaxed'
       : uiScale === 'large'
-      ? 'text-sm sm:text-lg leading-relaxed'
-      : 'text-[13px] sm:text-base leading-relaxed';
+      ? 'text-[15px] sm:text-base leading-relaxed'
+      : 'text-sm sm:text-[15px] leading-relaxed';
 
   const optionBadgeScaleClass =
     uiScale === 'compact'
-      ? 'w-6 h-6 sm:w-7 sm:h-7 text-[11px] sm:text-xs'
+      ? 'w-6 h-6 text-xs'
+      : uiScale === 'large'
+      ? 'w-7 h-7 sm:w-8 sm:h-8 text-xs sm:text-sm'
       : 'w-6 h-6 sm:w-7 sm:h-7 text-xs';
 
   // Pre-Exam Official Instructions Screen
@@ -609,7 +763,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
         <header className="border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-3.5 sm:py-4 flex flex-wrap items-center justify-between gap-2 bg-slate-50 dark:bg-slate-900">
           <div className="min-w-0">
             <div className="text-[11px] sm:text-xs font-mono text-slate-500 dark:text-slate-400 truncate">
-              DSSSB TGT CS · OFFICIAL CBT TERMINAL ({mockId})
+              DSSSB TGT CS · STANDARD CBT TERMINAL ({mockId})
             </div>
             <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white truncate">
               {title}
@@ -623,7 +777,11 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                 aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
                 className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded-md cursor-pointer"
               >
-                {darkMode ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5" />}
+                {darkMode ? (
+                  <Sun className="w-3.5 h-3.5 text-amber-400" />
+                ) : (
+                  <Moon className="w-3.5 h-3.5" />
+                )}
                 <span>{darkMode ? 'Light' : 'Dark'}</span>
               </button>
             )}
@@ -675,31 +833,30 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
 
           <div className="space-y-3 sm:space-y-4 text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
             <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
-              Strict DSSSB Examination Pattern &amp; Anti-Cheating Rules
+              DSSSB Standard CBT Examination Pattern &amp; Instructions
             </h2>
             <ul className="list-disc pl-5 space-y-2">
               <li>
                 <strong>Sequential Section Locking (DSSSB Pattern):</strong> Sections are attempted
-                one by one in strict sequence. To move to the next section, click{' '}
+                in sequence. To move to the next section, click{' '}
                 <strong>&ldquo;Lock Section &amp; Next Section&rdquo;</strong>. Once locked, you
-                cannot return to that section.
+                cannot return to that section during the live attempt.
               </li>
               <li>
-                <strong>Screen / Window Resize Immediate Auto-Submit:</strong> Do{' '}
-                <strong>NOT</strong> resize the browser window, split-screen, or rotate screen
-                dimensions during the exam. Any resize immediately submits your exam.
+                <strong>No Per-Question Time Limit:</strong> You can manage your overall{' '}
+                <strong>{durationMinutes}-minute</strong> examination timer freely across questions
+                within the active section. A per-question elapsed time counter is shown for your
+                reference.
               </li>
               <li>
-                <strong>1-Minute Per-Question Rule (Except Maths &amp; Reasoning):</strong> Apart
-                from <strong>Mathematics</strong> and <strong>Reasoning</strong> sections, spending{' '}
-                <strong>1 minute (60 seconds)</strong> on a single question immediately
-                auto-submits the exam.
+                <strong>Detailed Explanation &amp; Reattempts Supported:</strong> You can view
+                detailed step-by-step explanations directly inside the mock screen using the{' '}
+                <strong>&ldquo;View Solution&rdquo;</strong> button and reattempt any mock paper at
+                any time.
               </li>
               <li>
-                <strong>Mobile-Scaled CBT Interface:</strong> Use the <strong>A-/A/A+</strong> scale
-                button in the top bar anytime to fit long questions comfortably on your mobile
-                screen, and tap <strong>Palette</strong> to jump between questions in the active
-                section.
+                <strong>Screen / Window Resize Anti-Cheating Rule:</strong> Avoid resizing the
+                browser window or splitting the screen during an active live test.
               </li>
             </ul>
           </div>
@@ -713,9 +870,9 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                 className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 shrink-0"
               />
               <span className="text-xs sm:text-sm text-slate-800 dark:text-slate-200 leading-snug">
-                I have read and understood the DSSSB sequential section-locking rule, the 1-minute
-                per-question limit (excluding Mathematics &amp; Reasoning), and the immediate
-                auto-submit rule upon screen resizing.
+                I have read and understood the standard CBT instructions, marking scheme (+
+                {correctMarks.toFixed(2)} / {incorrectMarks.toFixed(2)}), and sequential section
+                navigation rules.
               </span>
             </label>
           </div>
@@ -731,7 +888,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                   : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed'
               }`}
             >
-              Launch DSSSB CBT Terminal →
+              Start Mock Test →
             </button>
           </div>
         </div>
@@ -739,27 +896,41 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
     );
   }
 
+  const userSelectedOption = currentQuestion ? responses[currentQuestion.id] : undefined;
+  const hasUserAnsweredCurrent = typeof userSelectedOption === 'number';
+  const correctOptionIndex =
+    currentQuestion && typeof currentQuestion.correctIndex === 'number'
+      ? currentQuestion.correctIndex
+      : 0;
+  const isCurrentAnswerCorrect =
+    hasUserAnsweredCurrent && userSelectedOption === correctOptionIndex;
+
   return (
-    <div className="fixed inset-0 z-50 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col select-none overflow-hidden">
-      {/* Top CBT Header Bar — Scaled for Mobile & Desktop */}
-      <header className="min-h-12 py-1.5 px-2.5 sm:px-5 border-b border-slate-800 flex items-center justify-between gap-1.5 sm:gap-3 bg-slate-950 text-white shrink-0">
-        {/* Left: Mock Identifier & Title */}
+    <div className="fixed inset-0 z-50 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col select-none overflow-hidden">
+      {/* Top Standard CBT Header Bar (Testbook / TCS iON Style) */}
+      <header className="min-h-12 py-1.5 px-3 sm:px-5 border-b border-slate-800 flex items-center justify-between gap-2 bg-slate-950 text-white shrink-0">
+        {/* Left: Mock Title & Mode Badge */}
         <div className="flex items-center gap-2 min-w-0">
-          <span className="hidden xs:inline-block px-1.5 py-0.5 text-[10px] sm:text-xs font-mono font-semibold bg-slate-800 text-slate-200 rounded border border-slate-700 shrink-0">
+          <span className="hidden sm:inline-block px-2 py-0.5 text-[11px] font-mono font-semibold bg-slate-800 text-slate-200 rounded border border-slate-700 shrink-0">
             {mockId}
           </span>
-          <h1 className="text-xs sm:text-sm font-semibold truncate max-w-[110px] xs:max-w-[150px] sm:max-w-xs md:max-w-md">
+          <h1 className="text-xs sm:text-sm font-bold truncate max-w-[130px] xs:max-w-[180px] sm:max-w-md">
             {title}
           </h1>
+          {isSolutionsMode && (
+            <span className="px-2 py-0.5 text-[10px] sm:text-xs font-semibold bg-emerald-900/90 text-emerald-200 border border-emerald-700 rounded shrink-0">
+              Solutions Mode
+            </span>
+          )}
         </div>
 
-        {/* Right: Scale Control + Theme + Per-Q Timer + Main Timer + Submit */}
-        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-          {/* Mobile & Desktop Font/Format Scale Button (Compact / Standard / Large) */}
+        {/* Right: Font Scale + Theme + Mode/Reattempt + Timer + Submit/Exit */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Font Scale Button (A- / A / A+) */}
           <button
             type="button"
             onClick={cycleUiScale}
-            title="Scale Mock Question & Option Format for Screen"
+            title="Adjust Question Font Size (Compact / Standard / Large)"
             className="flex items-center gap-1 px-2 py-1 rounded border border-slate-700 bg-slate-900 hover:bg-slate-800 text-[11px] font-mono font-semibold text-slate-200 cursor-pointer"
           >
             <Type className="w-3 h-3 text-slate-400 hidden sm:inline" />
@@ -784,56 +955,58 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
             </button>
           )}
 
-          {/* Per-Question 60s Rule Badge (Compact on Mobile, Detailed on Desktop) */}
-          <div
-            className={`px-2 py-1 rounded border font-mono text-[11px] sm:text-xs font-bold flex items-center gap-1 ${
-              isMathsOrReasoning
-                ? 'bg-emerald-950/80 border-emerald-700 text-emerald-300'
-                : questionSeconds >= 45
-                ? 'bg-red-900/90 border-red-500 text-red-100 animate-pulse'
-                : 'bg-slate-900 border-slate-700 text-amber-300'
-            }`}
-            title={
-              isMathsOrReasoning
-                ? 'Mathematics & Reasoning are exempt from the 60-second per-question limit'
-                : 'DSSSB Rule: Max 60 seconds allowed on any question outside Maths & Reasoning'
-            }
-          >
-            <Clock className="w-3 h-3 hidden sm:inline" />
-            <span className="sm:hidden">
-              {isMathsOrReasoning
-                ? `M/R:${questionSeconds}s`
-                : `Q:${Math.max(0, 60 - questionSeconds)}s`}
-            </span>
-            <span className="hidden sm:inline">
-              {isMathsOrReasoning
-                ? `Maths/Reasoning (${questionSeconds}s)`
-                : `Q Limit: ${Math.max(0, 60 - questionSeconds)}s`}
-            </span>
-          </div>
+          {/* Reattempt Paper Button (Always accessible in Solutions Mode or via Header) */}
+          {onReattemptMock && (
+            <button
+              type="button"
+              disabled={reattemptBusy}
+              onClick={handleTriggerReattemptFromMockScreen}
+              title="Start a Fresh Reattempt of this Question Paper"
+              className="flex items-center gap-1 px-2.5 py-1 rounded border border-sky-700 bg-sky-950/90 hover:bg-sky-900 text-sky-200 text-xs font-semibold cursor-pointer"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span className="hidden sm:inline">
+                {reattemptBusy ? 'Resetting...' : 'Reattempt Paper'}
+              </span>
+              <span className="sm:hidden">Reattempt</span>
+            </button>
+          )}
 
-          {/* Main Exam Countdown Clock */}
-          <div
-            className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded font-mono text-xs sm:text-sm font-bold border ${
-              remainingSeconds < 300
-                ? 'bg-red-950 text-red-200 border-red-800'
-                : 'bg-slate-900 text-white border-slate-700'
-            }`}
-          >
-            <Clock className="w-3.5 h-3.5 text-slate-400 hidden xs:inline" />
-            <span>{formatClock(remainingSeconds)}</span>
-          </div>
+          {!isSolutionsMode ? (
+            <>
+              {/* Main Exam Countdown Clock */}
+              <div
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded font-mono text-xs sm:text-sm font-bold border ${
+                  remainingSeconds < 300
+                    ? 'bg-red-950 text-red-200 border-red-800'
+                    : 'bg-slate-900 text-white border-slate-700'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5 text-slate-400 hidden xs:inline" />
+                <span>{formatClock(remainingSeconds)}</span>
+              </div>
 
-          {/* Submit Exam Button */}
-          <button
-            type="button"
-            onClick={() => setShowSubmitConfirm(true)}
-            className="flex items-center gap-1 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer"
-          >
-            <Send className="w-3 h-3" />
-            <span className="hidden sm:inline">Submit Exam</span>
-            <span className="sm:hidden">Submit</span>
-          </button>
+              {/* Submit Exam Button */}
+              <button
+                type="button"
+                onClick={() => setShowSubmitConfirm(true)}
+                className="flex items-center gap-1 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer"
+              >
+                <Send className="w-3 h-3" />
+                <span className="hidden sm:inline">Submit Test</span>
+                <span className="sm:hidden">Submit</span>
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={onExitWithoutSubmit}
+              className="flex items-center gap-1 px-3 py-1 sm:py-1.5 rounded text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition-colors cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Exit Solutions</span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -857,12 +1030,13 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
         </div>
       )}
 
-      {/* DSSSB Sequential Section Bar (Compact & Scrollable on Mobile) */}
-      <div className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-2.5 sm:px-4 py-1.5 flex items-center justify-between gap-2 shrink-0">
+      {/* Standard Testbook / DSSSB Section Tabs Bar */}
+      <div className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2.5 sm:px-4 py-1.5 flex items-center justify-between gap-2 shrink-0 shadow-2xs">
         <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
           {orderedSections.map((sec, idx) => {
             const isCurrentSection = idx === activeSectionIndex;
-            const isLocked = lockedSections.has(sec.subject) || idx < activeSectionIndex;
+            const isLocked =
+              !isSolutionsMode && (lockedSections.has(sec.subject) || idx < activeSectionIndex);
 
             return (
               <button
@@ -870,30 +1044,37 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                 type="button"
                 onClick={() => {
                   if (idx === activeSectionIndex) return;
+                  if (isSolutionsMode) {
+                    setActiveSectionIndex(idx);
+                    setCurrentIndex(sec.questionIndices[0] ?? 0);
+                    return;
+                  }
                   if (idx < activeSectionIndex || isLocked) {
                     setSectionLockNotice(
-                      `Section "${sec.label}" is locked. DSSSB pattern does not allow revisiting locked sections.`
+                      `Section "${sec.label}" is locked during live test. Complete or switch to Solutions Mode to jump freely across all sections.`
                     );
                   } else {
                     setSectionLockNotice(
-                      `Section "${sec.label}" is locked. Click "Lock & Next" after finishing "${currentSection?.shortLabel}" to unlock it.`
+                      `Section "${sec.label}" unlocks after locking "${currentSection?.shortLabel}".`
                     );
                   }
                 }}
-                className={`px-2.5 sm:px-3 py-1 rounded text-[11px] sm:text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 cursor-pointer ${
                   isCurrentSection
                     ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 shadow-2xs'
                     : isLocked
-                    ? 'bg-slate-200/80 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
-                    : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800'
+                    ? 'bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
+                    : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
                 }`}
               >
-                {!isCurrentSection && <Lock className="w-2.5 h-2.5 opacity-75 shrink-0" />}
+                {!isCurrentSection && !isSolutionsMode && (
+                  <Lock className="w-3 h-3 opacity-70 shrink-0" />
+                )}
                 <span className="sm:hidden">
-                  {idx + 1}. {sec.shortLabel} ({sec.questionCount})
+                  {sec.shortLabel} ({sec.questionCount})
                 </span>
                 <span className="hidden sm:inline">
-                  {idx + 1}. {sec.label} ({sec.questionCount})
+                  {sec.label} ({sec.questionCount})
                 </span>
               </button>
             );
@@ -901,11 +1082,11 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
-          {activeSectionIndex < orderedSections.length - 1 && (
+          {!isSolutionsMode && activeSectionIndex < orderedSections.length - 1 && (
             <button
               type="button"
               onClick={() => setShowLockSectionConfirm(true)}
-              className="px-2.5 sm:px-3 py-1 rounded text-[11px] sm:text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white whitespace-nowrap flex items-center gap-1 cursor-pointer"
+              className="px-2.5 sm:px-3 py-1.5 rounded-md text-[11px] sm:text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white whitespace-nowrap flex items-center gap-1 cursor-pointer"
             >
               <Lock className="w-3 h-3" />
               <span className="hidden sm:inline">Lock Section &amp; Next →</span>
@@ -916,26 +1097,36 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
       </div>
 
       {/* Mobile Horizontal Quick-Jump Question Strip (< lg only) */}
-      <div className="lg:hidden border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 px-2.5 py-1.5 flex items-center justify-between gap-2 shrink-0">
+      <div className="lg:hidden border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/90 px-2.5 py-1.5 flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 flex-1">
           {currentSectionIndices.map((globalIdx, localIdx) => {
             const q = questions[globalIdx];
             if (!q) return null;
             const isCurrent = globalIdx === currentIndex;
-            const isAns = typeof responses[q.id] === 'number';
+            const userAns = responses[q.id];
+            const isAns = typeof userAns === 'number';
             const isRev = markedForReview.has(q.id);
             const isVis = visitedIds.has(q.id);
 
             let pillStyle =
-              'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700';
-            if (isAns && isRev) {
-              pillStyle = 'bg-amber-600 text-white border-amber-700';
-            } else if (isAns) {
-              pillStyle = 'bg-emerald-600 text-white border-emerald-700';
-            } else if (isRev) {
-              pillStyle = 'bg-amber-500 text-white border-amber-600';
-            } else if (isVis) {
-              pillStyle = 'bg-red-600 text-white border-red-700';
+              'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700';
+
+            if (isSolutionsMode) {
+              if (isAns && userAns === q.correctIndex) {
+                pillStyle = 'bg-emerald-600 text-white border-emerald-700';
+              } else if (isAns) {
+                pillStyle = 'bg-red-600 text-white border-red-700';
+              }
+            } else {
+              if (isAns && isRev) {
+                pillStyle = 'bg-amber-600 text-white border-amber-700';
+              } else if (isAns) {
+                pillStyle = 'bg-emerald-600 text-white border-emerald-700';
+              } else if (isRev) {
+                pillStyle = 'bg-amber-500 text-white border-amber-600';
+              } else if (isVis) {
+                pillStyle = 'bg-red-600 text-white border-red-700';
+              }
             }
 
             return (
@@ -958,7 +1149,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
         <button
           type="button"
           onClick={() => setShowMobilePalette(true)}
-          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 shrink-0 cursor-pointer"
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-semibold bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 shrink-0 cursor-pointer"
         >
           <LayoutGrid className="w-3.5 h-3.5" />
           <span>
@@ -967,122 +1158,266 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
         </button>
       </div>
 
-      {/* Main Split Workspace */}
+      {/* Main Split CBT Workspace (Standard Testbook Layout) */}
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-        {/* Left: Active Question Area (Full Height on Mobile!) */}
-        <div className="flex-1 flex flex-col overflow-y-auto px-3.5 py-3 sm:p-6 lg:p-8 bg-white dark:bg-slate-950">
+        {/* Left: Question Paper & Explanation Area */}
+        <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-slate-950">
           {currentQuestion ? (
-            <div className="max-w-3xl w-full mx-auto flex-1 flex flex-col">
-              {/* Question Metadata Header */}
-              <div className="flex items-center justify-between gap-2 pb-2.5 sm:pb-4 border-b border-slate-200 dark:border-slate-800">
-                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs text-slate-500 dark:text-slate-400 min-w-0">
-                  <span className="text-xs sm:text-sm font-bold font-mono text-slate-900 dark:text-white">
-                    Q.{posInCurrentSection + 1}/{currentSectionIndices.length}
+            <>
+              {/* Testbook-Style Question Sub-Header Strip */}
+              <div className="px-4 sm:px-6 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <span className="text-xs sm:text-sm font-bold text-slate-950 dark:text-white">
+                    Question No. {posInCurrentSection + 1}
                   </span>
-                  <span aria-hidden="true">·</span>
-                  <span className="font-medium text-slate-700 dark:text-slate-300 truncate">
-                    {currentSection?.shortLabel}
+                  <span className="text-xs font-mono text-slate-400 dark:text-slate-500">
+                    (of {currentSectionIndices.length})
                   </span>
                   {currentQuestion.topic && (
-                    <>
-                      <span className="hidden sm:inline" aria-hidden="true">
-                        ·
-                      </span>
-                      <span className="hidden sm:inline truncate">{currentQuestion.topic}</span>
-                    </>
+                    <span className="hidden md:inline-block px-2 py-0.5 text-[11px] font-medium bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded">
+                      {currentQuestion.topic}
+                    </span>
                   )}
                 </div>
 
-                <div className="flex items-center gap-1.5 text-[11px] sm:text-xs font-mono shrink-0">
-                  <span className="text-emerald-700 dark:text-emerald-400 font-semibold">
-                    +{correctMarks.toFixed(2)}
-                  </span>
-                  <span className="text-slate-300 dark:text-slate-700">/</span>
-                  <span className="text-red-700 dark:text-red-400 font-semibold">
-                    {incorrectMarks.toFixed(2)}
-                  </span>
-                </div>
-              </div>
+                <div className="flex items-center gap-2 sm:gap-3 text-xs">
+                  {/* Elapsed Time on Current Question */}
+                  {!isSolutionsMode && (
+                    <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-[11px] sm:text-xs text-slate-700 dark:text-slate-300">
+                      <Clock className="w-3 h-3 text-slate-400" />
+                      <span>Time: {formatClock(questionSeconds)}</span>
+                    </div>
+                  )}
 
-              {/* Question Stem (Scaled for Mobile & Desktop) */}
-              <div
-                className={`font-medium text-slate-900 dark:text-slate-100 select-text whitespace-pre-line ${questionStemScaleClass}`}
-              >
-                {currentQuestion.question}
-              </div>
+                  {/* Marks Badge (+1.00 / -0.25) */}
+                  <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-[11px] sm:text-xs">
+                    <span className="text-slate-500 dark:text-slate-400 hidden sm:inline">
+                      Marks:
+                    </span>
+                    <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                      +{correctMarks.toFixed(2)}
+                    </span>
+                    <span className="text-slate-300 dark:text-slate-600">|</span>
+                    <span className="font-bold text-red-600 dark:text-red-400">
+                      {incorrectMarks.toFixed(2)}
+                    </span>
+                  </div>
 
-              {/* 4 Options (Scaled for Mobile & Desktop) */}
-              <div className="space-y-2 sm:space-y-3 pb-4">
-                {currentQuestion.options.map((optText, optIdx) => {
-                  const isSelected = responses[currentQuestion.id] === optIdx;
-                  const optionLetter = String.fromCharCode(65 + optIdx);
-
-                  return (
-                    <button
-                      key={optIdx}
-                      type="button"
-                      onClick={() => handleSelectOption(optIdx)}
-                      className={`w-full text-left border transition-all flex items-start cursor-pointer ${optionCardScaleClass} ${
-                        isSelected
-                          ? 'border-slate-900 dark:border-slate-200 bg-slate-900/5 dark:bg-slate-800/90 ring-1 ring-slate-900 dark:ring-slate-200'
-                          : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900'
-                      }`}
-                    >
-                      <span
-                        className={`rounded-md font-mono font-bold flex items-center justify-center shrink-0 mt-0.5 border ${optionBadgeScaleClass} ${
-                          isSelected
-                            ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 border-slate-900 dark:border-slate-100'
-                            : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                        }`}
-                      >
-                        {optionLetter}
-                      </span>
-                      <span
-                        className={`text-slate-800 dark:text-slate-200 flex-1 ${optionTextScaleClass}`}
-                      >
-                        {optText}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Sticky / Bottom Action Controls — Mobile-Ergonomic 2-Row on Phones, Single-Row on Tablet/Desktop */}
-              <div className="mt-auto pt-3 sm:pt-6 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 bg-white dark:bg-slate-950">
-                {/* Secondary Controls: Mark for Review & Clear Response */}
-                <div className="grid grid-cols-2 sm:flex items-center gap-2">
+                  {/* Quick Solution Toggle inside Question Sub-Header */}
                   <button
                     type="button"
-                    onClick={handleToggleMarkForReview}
-                    className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium border transition-colors cursor-pointer ${
-                      markedForReview.has(currentQuestion.id)
-                        ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200'
-                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    onClick={() => setShowSolutionInMockScreen((prev) => !prev)}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold border transition-colors cursor-pointer ${
+                      showSolutionInMockScreen
+                        ? 'bg-emerald-600 text-white border-emerald-600'
+                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
                     }`}
                   >
-                    <Bookmark className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">
-                      {markedForReview.has(currentQuestion.id) ? 'Marked Review' : 'Mark Review'}
-                    </span>
+                    {showSolutionInMockScreen ? (
+                      <>
+                        <EyeOff className="w-3.5 h-3.5" />
+                        <span>Hide Solution</span>
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>View Solution</span>
+                      </>
+                    )}
                   </button>
+                </div>
+              </div>
+
+              {/* Scrollable Question Stem + Options + Inline Detailed Solution */}
+              <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-4 sm:py-6">
+                <div className="max-w-4xl mx-auto space-y-5">
+                  {/* Question Stem (Standard Testbook Formatting) */}
+                  <div
+                    className={`font-medium text-slate-900 dark:text-slate-100 select-text ${questionStemScaleClass}`}
+                  >
+                    {renderStandardQuestionStem(currentQuestion.question)}
+                  </div>
+
+                  {/* 4 Standard Options List */}
+                  <div className="space-y-2.5 sm:space-y-3 pt-1">
+                    {currentQuestion.options.map((optText, optIdx) => {
+                      const isSelected = userSelectedOption === optIdx;
+                      const isCorrectOption =
+                        showSolutionInMockScreen && optIdx === correctOptionIndex;
+                      const isWrongUserSelection =
+                        showSolutionInMockScreen && isSelected && optIdx !== correctOptionIndex;
+                      const optionLetter = String.fromCharCode(65 + optIdx);
+
+                      let cardStyle =
+                        'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900';
+                      let badgeStyle =
+                        'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700';
+
+                      if (isCorrectOption) {
+                        cardStyle =
+                          'border-emerald-500 dark:border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/40 ring-1 ring-emerald-500';
+                        badgeStyle =
+                          'bg-emerald-600 text-white border-emerald-600';
+                      } else if (isWrongUserSelection) {
+                        cardStyle =
+                          'border-red-500 dark:border-red-500 bg-red-50/70 dark:bg-red-950/40 ring-1 ring-red-500';
+                        badgeStyle = 'bg-red-600 text-white border-red-600';
+                      } else if (isSelected) {
+                        cardStyle =
+                          'border-sky-600 dark:border-sky-400 bg-sky-50/60 dark:bg-sky-950/40 ring-1 ring-sky-600 dark:ring-sky-400';
+                        badgeStyle =
+                          'bg-sky-600 dark:bg-sky-400 text-white dark:text-slate-950 border-sky-600 dark:border-sky-400';
+                      }
+
+                      return (
+                        <button
+                          key={optIdx}
+                          type="button"
+                          onClick={() => handleSelectOption(optIdx)}
+                          className={`w-full text-left border transition-all flex items-start justify-between cursor-pointer ${optionCardScaleClass} ${cardStyle}`}
+                        >
+                          <div className="flex items-start gap-3 flex-1 min-w-0">
+                            <span
+                              className={`rounded-full font-mono font-bold flex items-center justify-center shrink-0 mt-0.5 border ${optionBadgeScaleClass} ${badgeStyle}`}
+                            >
+                              {optionLetter}
+                            </span>
+                            <span
+                              className={`text-slate-800 dark:text-slate-100 flex-1 select-text ${optionTextScaleClass}`}
+                            >
+                              {optText}
+                            </span>
+                          </div>
+
+                          {/* Status Badges when Solution is Shown */}
+                          {showSolutionInMockScreen && (
+                            <div className="flex items-center gap-1.5 ml-3 shrink-0">
+                              {isCorrectOption && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-900/70 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  <span>Correct Answer</span>
+                                </span>
+                              )}
+                              {isWrongUserSelection && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-red-100 dark:bg-red-900/70 text-red-800 dark:text-red-200 border border-red-300 dark:border-red-700">
+                                  <XCircle className="w-3 h-3" />
+                                  <span>Your Answer</span>
+                                </span>
+                              )}
+                              {isCorrectOption && isSelected && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-sky-100 dark:bg-sky-900/70 text-sky-800 dark:text-sky-200 border border-sky-300 dark:border-sky-700">
+                                  <span>Your Answer</span>
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Inline Detailed Solution & Explanation Panel inside Mock Screen (Testbook Style) */}
+                  {showSolutionInMockScreen && (
+                    <div className="mt-5 rounded-xl border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/50 dark:bg-emerald-950/25 p-4 sm:p-5 space-y-3 select-text">
+                      <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-emerald-200/80 dark:border-emerald-800/60">
+                        <div className="flex items-center gap-2">
+                          <BookOpen className="w-4 h-4 text-emerald-700 dark:text-emerald-400 shrink-0" />
+                          <span className="text-xs sm:text-sm font-bold text-emerald-950 dark:text-emerald-200">
+                            Detailed Solution &amp; Explanation
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
+                          <span className="px-2.5 py-0.5 rounded font-bold bg-emerald-600 text-white">
+                            Correct Option: {String.fromCharCode(65 + correctOptionIndex)}
+                          </span>
+                          {hasUserAnsweredCurrent ? (
+                            <span
+                              className={`px-2.5 py-0.5 rounded font-semibold ${
+                                isCurrentAnswerCorrect
+                                  ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200'
+                                  : 'bg-red-100 dark:bg-red-900/60 text-red-800 dark:text-red-200'
+                              }`}
+                            >
+                              Your Choice: Option {String.fromCharCode(65 + userSelectedOption)} (
+                              {isCurrentAnswerCorrect ? 'Correct' : 'Incorrect'})
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                              Unattempted
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="text-xs sm:text-sm text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-line space-y-2">
+                        <div className="font-semibold text-slate-900 dark:text-white">
+                          Answer: Option {String.fromCharCode(65 + correctOptionIndex)} —{' '}
+                          {currentQuestion.options[correctOptionIndex]}
+                        </div>
+                        <p>
+                          {currentQuestion.explanation ||
+                            'Detailed step-by-step explanation verified as per the official DSSSB TGT Computer Science syllabus and answer key.'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Standard Testbook Bottom Action Footer Bar */}
+              <div className="px-3.5 sm:px-6 py-2.5 sm:py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 shrink-0">
+                {/* Left Group: Mark for Review & Next + Clear Response + View Solution */}
+                <div className="grid grid-cols-3 sm:flex items-center gap-2">
+                  {!isSolutionsMode && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleMarkForReviewAndNext}
+                        className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-md text-xs font-semibold border transition-colors cursor-pointer ${
+                          markedForReview.has(currentQuestion.id)
+                            ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200'
+                            : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        <Bookmark className="w-3.5 h-3.5 shrink-0 hidden xs:inline" />
+                        <span className="truncate">Mark for Review &amp; Next</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleClearResponse}
+                        disabled={typeof responses[currentQuestion.id] !== 'number'}
+                        className="px-2.5 sm:px-3.5 py-2 rounded-md text-xs font-semibold border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed text-center truncate"
+                      >
+                        Clear Response
+                      </button>
+                    </>
+                  )}
 
                   <button
                     type="button"
-                    onClick={handleClearResponse}
-                    disabled={typeof responses[currentQuestion.id] !== 'number'}
-                    className="px-3 py-2 rounded-lg text-xs sm:text-sm font-medium border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed text-center"
+                    onClick={() => setShowSolutionInMockScreen((prev) => !prev)}
+                    className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-md text-xs font-semibold border transition-colors cursor-pointer ${
+                      showSolutionInMockScreen
+                        ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200'
+                        : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+                    }`}
                   >
-                    Clear Answer
+                    <BookOpen className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">
+                      {showSolutionInMockScreen ? 'Hide Explanation' : 'Explanation'}
+                    </span>
                   </button>
                 </div>
 
-                {/* Primary Navigation Controls: Previous & Save & Next */}
+                {/* Right Group: Previous & Save & Next */}
                 <div className="grid grid-cols-2 sm:flex items-center gap-2">
                   <button
                     type="button"
                     onClick={handlePrevInSection}
-                    disabled={!hasPrevInSection}
-                    className="flex items-center justify-center gap-1 px-3.5 py-2.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+                    disabled={!hasPrevInSection && !(isSolutionsMode && activeSectionIndex > 0)}
+                    className="flex items-center justify-center gap-1 px-3.5 py-2 rounded-md text-xs sm:text-sm font-semibold border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
                   >
                     <ChevronLeft className="w-4 h-4 shrink-0" />
                     <span>Previous</span>
@@ -1091,71 +1426,105 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                   <button
                     type="button"
                     onClick={handleSaveAndNextInSection}
-                    className="flex items-center justify-center gap-1 px-4 py-2.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 hover:bg-slate-800 dark:hover:bg-white cursor-pointer"
+                    className="flex items-center justify-center gap-1 px-5 py-2 rounded-md text-xs sm:text-sm font-semibold bg-sky-600 hover:bg-sky-500 text-white transition-colors cursor-pointer shadow-2xs"
                   >
                     <span className="truncate">
-                      {hasNextInSection
+                      {isSolutionsMode
+                        ? hasNextInSection || activeSectionIndex < orderedSections.length - 1
+                          ? 'Next Question'
+                          : 'End of Solutions'
+                        : hasNextInSection
                         ? 'Save & Next'
                         : activeSectionIndex < orderedSections.length - 1
-                        ? 'Lock & Next →'
+                        ? 'Lock Section & Next →'
                         : 'Review & Submit'}
                     </span>
                     <ChevronRight className="w-4 h-4 shrink-0" />
                   </button>
                 </div>
               </div>
-            </div>
+            </>
           ) : null}
         </div>
 
         {/* Right: Desktop Question Palette Sidebar (lg+ screens) */}
         <aside className="hidden lg:flex w-80 border-l border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex-col shrink-0">
-          <div className="p-4 border-b border-slate-200 dark:border-slate-800 space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-bold text-slate-600 dark:text-slate-300">
-                Active Section Palette ({currentSection?.questionCount || 0} Qs)
+          {/* Candidate Mini Header inside Sidebar (Testbook Style) */}
+          <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-950/50">
+            <div className="min-w-0">
+              <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                {candidateName}
               </div>
-              <button
-                type="button"
-                onClick={requestExamFullscreen}
-                className="text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1 cursor-pointer"
-                title="Enter Fullscreen"
-              >
-                <Maximize2 className="w-3.5 h-3.5" />
-                <span>Fullscreen</span>
-              </button>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                {isSolutionsMode ? 'Solution & Explanation Review' : 'Active Candidate'}
+              </div>
             </div>
-            <div className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
-              {currentSection?.label} · Section {activeSectionIndex + 1} of{' '}
-              {orderedSections.length}
-            </div>
+            <button
+              type="button"
+              onClick={requestExamFullscreen}
+              className="text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1 cursor-pointer shrink-0"
+              title="Enter Fullscreen"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+              <span>Fullscreen</span>
+            </button>
+          </div>
 
-            <div className="grid grid-cols-2 gap-1.5 text-xs pt-1">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-xs bg-emerald-600 inline-block" />
-                <span className="text-slate-600 dark:text-slate-300">
-                  Answered ({paletteStats.answered})
-                </span>
+          {/* Palette Legend */}
+          <div className="p-4 border-b border-slate-200 dark:border-slate-800 space-y-2">
+            {isSolutionsMode ? (
+              <div className="grid grid-cols-2 gap-1.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-xs bg-emerald-600 inline-block" />
+                  <span className="text-slate-600 dark:text-slate-300">
+                    Correct ({paletteStats.correctCount})
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-xs bg-red-600 inline-block" />
+                  <span className="text-slate-600 dark:text-slate-300">
+                    Incorrect ({paletteStats.wrongCount})
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 col-span-2">
+                  <span className="w-3 h-3 rounded-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 inline-block" />
+                  <span className="text-slate-600 dark:text-slate-300">
+                    Unattempted ({paletteStats.unattemptedTotal})
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-xs bg-red-600 inline-block" />
-                <span className="text-slate-600 dark:text-slate-300">
-                  Not Answered ({paletteStats.notAnswered})
-                </span>
+            ) : (
+              <div className="grid grid-cols-2 gap-1.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-xs bg-emerald-600 inline-block" />
+                  <span className="text-slate-600 dark:text-slate-300">
+                    Answered ({paletteStats.answered})
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-xs bg-red-600 inline-block" />
+                  <span className="text-slate-600 dark:text-slate-300">
+                    Not Answered ({paletteStats.notAnswered})
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-xs bg-amber-500 inline-block" />
+                  <span className="text-slate-600 dark:text-slate-300">
+                    Marked ({paletteStats.markedOnly + paletteStats.answeredAndMarked})
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 inline-block" />
+                  <span className="text-slate-600 dark:text-slate-300">
+                    Not Visited ({paletteStats.notVisited})
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-xs bg-amber-500 inline-block" />
-                <span className="text-slate-600 dark:text-slate-300">
-                  Marked ({paletteStats.markedOnly + paletteStats.answeredAndMarked})
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 inline-block" />
-                <span className="text-slate-600 dark:text-slate-300">
-                  Not Visited ({paletteStats.notVisited})
-                </span>
-              </div>
-            </div>
+            )}
+          </div>
+
+          <div className="px-4 py-2 bg-slate-100/80 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200">
+            SECTION: {currentSection?.label}
           </div>
 
           <div className="flex-1 overflow-y-auto p-4">
@@ -1164,20 +1533,30 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                 const q = questions[globalIdx];
                 if (!q) return null;
                 const isCurrent = globalIdx === currentIndex;
-                const isAns = typeof responses[q.id] === 'number';
+                const userAns = responses[q.id];
+                const isAns = typeof userAns === 'number';
                 const isRev = markedForReview.has(q.id);
                 const isVis = visitedIds.has(q.id);
 
                 let btnStyle =
                   'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700';
-                if (isAns && isRev) {
-                  btnStyle = 'bg-amber-600 text-white border-amber-700';
-                } else if (isAns) {
-                  btnStyle = 'bg-emerald-600 text-white border-emerald-700';
-                } else if (isRev) {
-                  btnStyle = 'bg-amber-500 text-white border-amber-600';
-                } else if (isVis) {
-                  btnStyle = 'bg-red-600 text-white border-red-700';
+
+                if (isSolutionsMode) {
+                  if (isAns && userAns === q.correctIndex) {
+                    btnStyle = 'bg-emerald-600 text-white border-emerald-700';
+                  } else if (isAns) {
+                    btnStyle = 'bg-red-600 text-white border-red-700';
+                  }
+                } else {
+                  if (isAns && isRev) {
+                    btnStyle = 'bg-amber-600 text-white border-amber-700';
+                  } else if (isAns) {
+                    btnStyle = 'bg-emerald-600 text-white border-emerald-700';
+                  } else if (isRev) {
+                    btnStyle = 'bg-amber-500 text-white border-amber-600';
+                  } else if (isVis) {
+                    btnStyle = 'bg-red-600 text-white border-red-700';
+                  }
                 }
 
                 return (
@@ -1198,20 +1577,43 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
             </div>
           </div>
 
-          {activeSectionIndex < orderedSections.length - 1 && (
-            <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+          <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2">
+            {!isSolutionsMode && activeSectionIndex < orderedSections.length - 1 && (
               <button
                 type="button"
                 onClick={() => setShowLockSectionConfirm(true)}
-                className="w-full py-2.5 px-3 rounded-lg text-xs font-semibold bg-slate-900 dark:bg-slate-100 hover:bg-slate-800 dark:hover:bg-white text-white dark:text-slate-950 flex items-center justify-center gap-1.5 cursor-pointer"
+                className="w-full py-2 px-3 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Lock className="w-3.5 h-3.5" />
                 <span>
-                  Lock {currentSection?.shortLabel || 'Section'} &amp; Go to Next Section
+                  Lock {currentSection?.shortLabel || 'Section'} &amp; Next Section
                 </span>
               </button>
-            </div>
-          )}
+            )}
+
+            {!isSolutionsMode ? (
+              <button
+                type="button"
+                onClick={() => setShowSubmitConfirm(true)}
+                className="w-full py-2.5 px-3 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Submit Test</span>
+              </button>
+            ) : (
+              onReattemptMock && (
+                <button
+                  type="button"
+                  disabled={reattemptBusy}
+                  onClick={handleTriggerReattemptFromMockScreen}
+                  className="w-full py-2.5 px-3 rounded-lg text-xs font-semibold bg-slate-900 dark:bg-slate-100 hover:bg-slate-800 dark:hover:bg-white text-white dark:text-slate-950 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>{reattemptBusy ? 'Starting Reattempt...' : 'Reattempt This Mock Paper'}</span>
+                </button>
+              )
+            )}
+          </div>
         </aside>
       </div>
 
@@ -1238,52 +1640,34 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
               </button>
             </div>
 
-            <div className="px-4 py-3 bg-slate-50 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800 grid grid-cols-2 gap-2 text-xs">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-xs bg-emerald-600 inline-block" />
-                <span className="text-slate-700 dark:text-slate-300">
-                  Answered ({paletteStats.answered})
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-xs bg-red-600 inline-block" />
-                <span className="text-slate-700 dark:text-slate-300">
-                  Not Answered ({paletteStats.notAnswered})
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-xs bg-amber-500 inline-block" />
-                <span className="text-slate-700 dark:text-slate-300">
-                  Marked ({paletteStats.markedOnly + paletteStats.answeredAndMarked})
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 inline-block" />
-                <span className="text-slate-700 dark:text-slate-300">
-                  Not Visited ({paletteStats.notVisited})
-                </span>
-              </div>
-            </div>
-
             <div className="p-4 overflow-y-auto grid grid-cols-5 sm:grid-cols-8 gap-2.5">
               {currentSectionIndices.map((globalIdx, localIdx) => {
                 const q = questions[globalIdx];
                 if (!q) return null;
                 const isCurrent = globalIdx === currentIndex;
-                const isAns = typeof responses[q.id] === 'number';
+                const userAns = responses[q.id];
+                const isAns = typeof userAns === 'number';
                 const isRev = markedForReview.has(q.id);
                 const isVis = visitedIds.has(q.id);
 
                 let btnStyle =
                   'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700';
-                if (isAns && isRev) {
-                  btnStyle = 'bg-amber-600 text-white border-amber-700';
-                } else if (isAns) {
-                  btnStyle = 'bg-emerald-600 text-white border-emerald-700';
-                } else if (isRev) {
-                  btnStyle = 'bg-amber-500 text-white border-amber-600';
-                } else if (isVis) {
-                  btnStyle = 'bg-red-600 text-white border-red-700';
+                if (isSolutionsMode) {
+                  if (isAns && userAns === q.correctIndex) {
+                    btnStyle = 'bg-emerald-600 text-white border-emerald-700';
+                  } else if (isAns) {
+                    btnStyle = 'bg-red-600 text-white border-red-700';
+                  }
+                } else {
+                  if (isAns && isRev) {
+                    btnStyle = 'bg-amber-600 text-white border-amber-700';
+                  } else if (isAns) {
+                    btnStyle = 'bg-emerald-600 text-white border-emerald-700';
+                  } else if (isRev) {
+                    btnStyle = 'bg-amber-500 text-white border-amber-600';
+                  } else if (isVis) {
+                    btnStyle = 'bg-red-600 text-white border-red-700';
+                  }
                 }
 
                 return (
@@ -1307,7 +1691,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
             </div>
 
             <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 bg-slate-50 dark:bg-slate-900">
-              {activeSectionIndex < orderedSections.length - 1 ? (
+              {!isSolutionsMode && activeSectionIndex < orderedSections.length - 1 ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -1319,7 +1703,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                   <Lock className="w-3.5 h-3.5" />
                   <span>Lock Section &amp; Next Section →</span>
                 </button>
-              ) : (
+              ) : !isSolutionsMode ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -1329,9 +1713,9 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                   className="flex-1 py-2.5 px-3 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>Submit Exam</span>
+                  <span>Submit Test</span>
                 </button>
-              )}
+              ) : null}
               <button
                 type="button"
                 onClick={() => setShowMobilePalette(false)}
@@ -1355,8 +1739,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                   Lock Current Section &amp; Proceed?
                 </h2>
                 <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
-                  You are about to permanently lock{' '}
-                  <strong>{currentSection.label}</strong> and unlock the next section:{' '}
+                  You are about to lock <strong>{currentSection.label}</strong> and proceed to{' '}
                   <strong>
                     {orderedSections[activeSectionIndex + 1]?.label || 'Next Section'}
                   </strong>
@@ -1371,14 +1754,14 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                 onClick={() => setShowLockSectionConfirm(false)}
                 className="w-full sm:w-auto px-4 py-2.5 sm:py-2 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
               >
-                Stay in Current Section
+                Stay in Section
               </button>
               <button
                 type="button"
                 onClick={handleConfirmLockCurrentSection}
                 className="w-full sm:w-auto px-5 py-2.5 sm:py-2 rounded-lg text-xs font-semibold bg-slate-900 dark:bg-slate-100 hover:bg-slate-800 dark:hover:bg-white text-white dark:text-slate-950 cursor-pointer"
               >
-                Yes, Lock Section &amp; Continue →
+                Yes, Lock &amp; Continue →
               </button>
             </div>
           </div>
@@ -1426,8 +1809,8 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
             </div>
 
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              Once submitted, your answers are locked and evaluated immediately for official
-              ranking.
+              Once submitted, your answers are evaluated immediately and you can review detailed
+              explanations or reattempt the paper anytime.
             </p>
 
             <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2.5 pt-2">
@@ -1443,7 +1826,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                 type="button"
                 disabled={submitting}
                 onClick={() => triggerFinalSubmit()}
-                className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-5 py-2.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 hover:bg-slate-800 dark:hover:bg-white cursor-pointer"
+                className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-5 py-2.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 hover:bg-slate-800 dark:hover:bg-slate-200 cursor-pointer"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>{submitting ? 'Evaluating...' : 'Submit Final Attempt'}</span>
