@@ -1084,6 +1084,159 @@ export async function saveMockConfigAdmin(
   }
 }
 
+function computeUserAggregateStatsFromAttempts(completedAttempts: ExamAttempt[]) {
+  const zeroSectionAverages: Record<string, number> = {
+    'general-awareness': 0,
+    reasoning: 0,
+    mathematics: 0,
+    hindi: 0,
+    english: 0,
+    'computer-science': 0,
+    'teaching-methodology': 0,
+  };
+
+  if (completedAttempts.length === 0) {
+    return {
+      mocksAttempted: 0,
+      averageScore: 0,
+      highestScore: 0,
+      latestScore: 0,
+      averageAccuracy: 0,
+      partAAverageScore: 0,
+      partBAverageScore: 0,
+      sectionAverages: zeroSectionAverages,
+      lastAttemptedMock: '',
+      lastSubmissionAt: new Date().toISOString().slice(0, 40),
+    };
+  }
+
+  const sortedBySubmission = [...completedAttempts].sort((a, b) =>
+    (a.submittedAt || a.startedAt || '').localeCompare(b.submittedAt || b.startedAt || '')
+  );
+  const latestAttempt = sortedBySubmission[sortedBySubmission.length - 1];
+
+  const validScores = completedAttempts.map((a) => Number(a.score || 0));
+  const validAccuracies = completedAttempts.map((a) => Number(a.accuracy || 0));
+  const count = completedAttempts.length;
+
+  const mocksAttempted = Math.min(100, count);
+  const averageScore = Number(
+    (validScores.reduce((acc, s) => acc + s, 0) / count).toFixed(2)
+  );
+  const highestScore = Number(Math.max(...validScores).toFixed(2));
+  const latestScore = Number((latestAttempt?.score || 0).toFixed(2));
+  const averageAccuracy = Number(
+    (validAccuracies.reduce((acc, a) => acc + a, 0) / count).toFixed(2)
+  );
+
+  const sectionSums: Record<SubjectSlug, number> = {
+    'general-awareness': 0,
+    reasoning: 0,
+    mathematics: 0,
+    hindi: 0,
+    english: 0,
+    'computer-science': 0,
+    'teaching-methodology': 0,
+  };
+
+  let sumPartA = 0;
+  let sumPartB = 0;
+
+  for (const att of completedAttempts) {
+    const bd = computePartAndSectionScoresFromAttempt(att.sectionScores);
+    sumPartA += typeof att.partAScore === 'number' ? att.partAScore : bd.partAScore;
+    sumPartB += typeof att.partBScore === 'number' ? att.partBScore : bd.partBScore;
+    for (const subj of ALL_7_SUBJECTS) {
+      sectionSums[subj] += bd.sectionMap[subj];
+    }
+  }
+
+  const sectionAverages: Record<string, number> = {};
+  for (const subj of ALL_7_SUBJECTS) {
+    sectionAverages[subj] = Number((sectionSums[subj] / count).toFixed(2));
+  }
+
+  return {
+    mocksAttempted,
+    averageScore,
+    highestScore,
+    latestScore,
+    averageAccuracy,
+    partAAverageScore: Number((sumPartA / count).toFixed(2)),
+    partBAverageScore: Number((sumPartB / count).toFixed(2)),
+    sectionAverages,
+    lastAttemptedMock: (latestAttempt?.mockId || '').slice(0, 32),
+    lastSubmissionAt: (
+      latestAttempt?.submittedAt ||
+      latestAttempt?.startedAt ||
+      new Date().toISOString()
+    ).slice(0, 40),
+  };
+}
+
+async function syncUserAggregateAndOverallLeaderboard(params: {
+  uid: string;
+  completedAttempts: ExamAttempt[];
+  candidateName?: string;
+}): Promise<void> {
+  const safeUid = sanitizeId(params.uid);
+  const stats = computeUserAggregateStatsFromAttempts(params.completedAttempts);
+  const batch = writeBatch(db);
+  const userRef = doc(db, 'users', safeUid);
+
+  batch.update(userRef, {
+    mocksAttempted: stats.mocksAttempted,
+    averageScore: stats.averageScore,
+    highestScore: stats.highestScore,
+    latestScore: stats.latestScore,
+    averageAccuracy: stats.averageAccuracy,
+    partAAverageScore: stats.partAAverageScore,
+    partBAverageScore: stats.partBAverageScore,
+    sectionAverages: stats.sectionAverages,
+    lastAttemptedMock: stats.lastAttemptedMock,
+    updatedAt: serverTimestamp(),
+  });
+
+  const overallLbRef = doc(db, 'leaderboard_overall', safeUid);
+  if (stats.mocksAttempted <= 0) {
+    batch.delete(overallLbRef);
+  } else {
+    let resolvedName = params.candidateName || '';
+    if (!resolvedName) {
+      try {
+        const uSnap = await getDoc(userRef);
+        if (uSnap.exists()) {
+          const uData = uSnap.data() as UserProfile;
+          resolvedName = uData.username ? `@${uData.username}` : uData.fullName;
+        }
+      } catch {
+        // Ignore
+      }
+    }
+    const cleanName = sanitizeString(
+      resolvedName,
+      BLUEPRINT_CONSTRAINTS.NAME_MAX_LEN,
+      'Candidate'
+    );
+    batch.set(overallLbRef, {
+      uid: safeUid,
+      candidateName: cleanName,
+      averageScore: stats.averageScore,
+      mocksAttempted: stats.mocksAttempted,
+      bestScore: stats.highestScore,
+      latestScore: stats.latestScore,
+      averageAccuracy: stats.averageAccuracy,
+      partAAverageScore: stats.partAAverageScore,
+      partBAverageScore: stats.partBAverageScore,
+      sectionAverages: stats.sectionAverages,
+      lastSubmissionAt: stats.lastSubmissionAt,
+      updatedAt: serverTimestamp(),
+    });
+  }
+
+  await batch.commit();
+}
+
 export async function deleteMockAdmin(
   mockId: string,
   adminUid: string,
@@ -1103,19 +1256,108 @@ export async function deleteMockAdmin(
       // Ignore storage errors
     }
 
+    // 1. Fetch all attempts, mock leaderboard entries for this mock, and active mock configs
+    const [allAttemptsSnap, mockLbSnap, mockConfigsSnap, usersSnap] = await Promise.all([
+      getDocs(query(collection(db, 'attempts'), where('uid', '!=', ''), limit(400))),
+      getDocs(
+        query(
+          collection(db, 'leaderboard_mocks', safeMockId, 'entries'),
+          where('timeTakenSeconds', '>=', 0),
+          limit(200)
+        )
+      ),
+      getDocs(query(collection(db, 'mock_configs'), where('dayNumber', '>=', 1))),
+      getDocs(query(collection(db, 'users'), where('uid', '!=', ''), limit(200))),
+    ]);
+
+    const activeMockIds = new Set<string>();
+    for (const d of mockConfigsSnap.docs) {
+      const mId = (d.data() as { mockId?: string }).mockId || d.id;
+      if (mId !== safeMockId) {
+        activeMockIds.add(mId);
+      }
+    }
+    const localConfigs = readLocalMemoryMockConfigs();
+    for (const localId of Object.keys(localConfigs)) {
+      if (localId !== safeMockId) {
+        activeMockIds.add(localId);
+      }
+    }
+
     const batch = writeBatch(db);
+
+    // 2. Delete mock config & 200-question mock paper document
     batch.delete(doc(db, 'mock_configs', safeMockId));
+    batch.delete(doc(db, 'mock_papers', safeMockId));
+
+    // 3. Delete all mock leaderboard entries for this deleted mock
+    for (const lbDoc of mockLbSnap.docs) {
+      batch.delete(lbDoc.ref);
+    }
+
+    // 4. Delete all attempts for this deleted mock (and any orphaned attempts for previously deleted mocks)
+    const remainingCompletedByUid: Record<string, ExamAttempt[]> = {};
+    const affectedUids = new Set<string>();
+
+    for (const attDoc of allAttemptsSnap.docs) {
+      const att = attDoc.data() as ExamAttempt;
+      const isDeletedMock =
+        att.mockId === safeMockId ||
+        (activeMockIds.size > 0 && !activeMockIds.has(att.mockId));
+
+      if (isDeletedMock) {
+        batch.delete(attDoc.ref);
+        batch.delete(doc(db, 'leaderboard_mocks', att.mockId, 'entries', att.uid));
+        affectedUids.add(att.uid);
+        try {
+          localStorage.removeItem(`mockrank_backup_${att.attemptId}`);
+        } catch {
+          // Ignore
+        }
+      } else if (att.status === 'completed') {
+        if (!remainingCompletedByUid[att.uid]) {
+          remainingCompletedByUid[att.uid] = [];
+        }
+        remainingCompletedByUid[att.uid].push(att);
+      }
+    }
+
+    // Also include any user who had mocksAttempted > 0 or lastAttemptedMock === safeMockId
+    const usersByUid: Record<string, UserProfile> = {};
+    for (const uDoc of usersSnap.docs) {
+      const u = uDoc.data() as UserProfile;
+      usersByUid[u.uid] = u;
+      if (u.lastAttemptedMock === safeMockId || u.mocksAttempted > 0) {
+        affectedUids.add(u.uid);
+      }
+    }
+
     const eventId = sanitizeId(`evt_delmock_${Date.now()}`);
     batch.set(doc(db, 'admin_audit', eventId), {
       eventId,
       adminUid: sanitizeId(adminUid),
       adminEmail: sanitizeString(adminEmail, 254, 'admin@mockrank.in'),
-      action: 'UPDATE_MOCK_CONFIG',
+      action: 'DELETE_MOCK_AND_RESET_SCORES',
       targetMockId: safeMockId,
-      reason: `Deleted mock ${safeMockId}`,
+      reason: `Deleted mock ${safeMockId} and reset/recalculated all attempted scores and leaderboards`,
       createdAt: serverTimestamp(),
     });
+
     await batch.commit();
+
+    // 5. Recalculate & sync each affected user's aggregate profile scores and overall leaderboard
+    for (const uid of affectedUids) {
+      const userObj = usersByUid[uid];
+      const remaining = remainingCompletedByUid[uid] || [];
+      const candidateName = userObj?.username
+        ? `@${userObj.username}`
+        : userObj?.fullName || 'Candidate';
+      await syncUserAggregateAndOverallLeaderboard({
+        uid,
+        completedAttempts: remaining,
+        candidateName,
+      });
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
@@ -1232,6 +1474,172 @@ export async function adminResetOrInvalidateAttempt(params: {
     });
 
     await batch.commit();
+
+    // Recalculate user's remaining completed attempts and sync /users/{uid} + /leaderboard_overall/{uid}
+    const userAttempts = await fetchUserAttempts(safeUid);
+    const remainingCompleted = userAttempts.filter(
+      (a) => a.status === 'completed' && a.attemptId !== safeAttemptId
+    );
+    await syncUserAggregateAndOverallLeaderboard({
+      uid: safeUid,
+      completedAttempts: remainingCompleted,
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+/**
+ * Resets all marks, attempts, and leaderboard entries for a single user.
+ */
+export async function adminResetUserMarks(params: {
+  targetUser: UserProfile;
+  adminUid: string;
+  adminEmail: string;
+  knownMockIds?: string[];
+}): Promise<void> {
+  const safeUid = sanitizeId(params.targetUser.uid);
+  const path = `users/${safeUid}`;
+  try {
+    const userAttempts = await fetchUserAttempts(safeUid);
+    const mockIdSet = new Set<string>(params.knownMockIds || []);
+    for (const att of userAttempts) {
+      mockIdSet.add(att.mockId);
+    }
+
+    const batch = writeBatch(db);
+    for (const att of userAttempts) {
+      batch.delete(doc(db, 'attempts', sanitizeId(att.attemptId)));
+      try {
+        localStorage.removeItem(`mockrank_backup_${att.attemptId}`);
+      } catch {
+        // Ignore
+      }
+    }
+
+    for (const mId of mockIdSet) {
+      const safeMockId = sanitizeId(mId).slice(0, 32);
+      batch.delete(doc(db, 'leaderboard_mocks', safeMockId, 'entries', safeUid));
+    }
+
+    const eventId = sanitizeId(`evt_resetuser_${Date.now()}`);
+    batch.set(doc(db, 'admin_audit', eventId), {
+      eventId,
+      adminUid: sanitizeId(params.adminUid),
+      adminEmail: sanitizeString(params.adminEmail, 254, 'admin@mockrank.in'),
+      action: 'RESET_USER_MARKS',
+      targetUid: safeUid,
+      reason: `Reset all marks, attempts, and leaderboards for user ${params.targetUser.username || params.targetUser.email}`,
+      createdAt: serverTimestamp(),
+    });
+
+    await batch.commit();
+
+    await syncUserAggregateAndOverallLeaderboard({
+      uid: safeUid,
+      completedAttempts: [],
+      candidateName: params.targetUser.username
+        ? `@${params.targetUser.username}`
+        : params.targetUser.fullName,
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+/**
+ * Resets ALL users' marks, attempts, and leaderboards across the entire platform.
+ */
+export async function adminResetAllUsersMarks(params: {
+  adminUid: string;
+  adminEmail: string;
+  knownMockIds?: string[];
+}): Promise<{ usersReset: number; attemptsDeleted: number }> {
+  const path = 'users';
+  try {
+    const [usersSnap, attemptsSnap, overallLbSnap, mockConfigsSnap] = await Promise.all([
+      getDocs(query(collection(db, 'users'), where('uid', '!=', ''), limit(200))),
+      getDocs(query(collection(db, 'attempts'), where('uid', '!=', ''), limit(400))),
+      getDocs(
+        query(collection(db, 'leaderboard_overall'), where('mocksAttempted', '>=', 1), limit(200))
+      ),
+      getDocs(query(collection(db, 'mock_configs'), where('dayNumber', '>=', 1))),
+    ]);
+
+    const allMockIds = new Set<string>(params.knownMockIds || []);
+    for (const d of mockConfigsSnap.docs) {
+      const mId = (d.data() as { mockId?: string }).mockId || d.id;
+      if (mId) allMockIds.add(mId);
+    }
+    for (const attDoc of attemptsSnap.docs) {
+      const att = attDoc.data() as ExamAttempt;
+      if (att.mockId) allMockIds.add(att.mockId);
+    }
+
+    // Delete all attempts & overall leaderboard entries
+    const cleanupBatch = writeBatch(db);
+    for (const attDoc of attemptsSnap.docs) {
+      cleanupBatch.delete(attDoc.ref);
+      try {
+        localStorage.removeItem(`mockrank_backup_${attDoc.id}`);
+      } catch {
+        // Ignore
+      }
+    }
+    for (const lbDoc of overallLbSnap.docs) {
+      cleanupBatch.delete(lbDoc.ref);
+    }
+
+    // Delete all per-mock leaderboard entries
+    for (const mId of allMockIds) {
+      const safeMockId = sanitizeId(mId).slice(0, 32);
+      const mockLbEntriesSnap = await getDocs(
+        query(
+          collection(db, 'leaderboard_mocks', safeMockId, 'entries'),
+          where('timeTakenSeconds', '>=', 0),
+          limit(200)
+        )
+      );
+      for (const entryDoc of mockLbEntriesSnap.docs) {
+        cleanupBatch.delete(entryDoc.ref);
+      }
+    }
+
+    const eventId = sanitizeId(`evt_resetall_${Date.now()}`);
+    cleanupBatch.set(doc(db, 'admin_audit', eventId), {
+      eventId,
+      adminUid: sanitizeId(params.adminUid),
+      adminEmail: sanitizeString(params.adminEmail, 254, 'admin@mockrank.in'),
+      action: 'RESET_ALL_USER_MARKS',
+      reason: `Reset all marks, attempts (${attemptsSnap.size}), and leaderboards for all ${usersSnap.size} users`,
+      createdAt: serverTimestamp(),
+    });
+
+    await cleanupBatch.commit();
+
+    // Reset every user document's marks & averages to zero
+    const zeroStats = computeUserAggregateStatsFromAttempts([]);
+    const userBatch = writeBatch(db);
+    for (const uDoc of usersSnap.docs) {
+      userBatch.update(uDoc.ref, {
+        mocksAttempted: 0,
+        averageScore: 0,
+        highestScore: 0,
+        latestScore: 0,
+        averageAccuracy: 0,
+        partAAverageScore: 0,
+        partBAverageScore: 0,
+        sectionAverages: zeroStats.sectionAverages,
+        lastAttemptedMock: '',
+        updatedAt: serverTimestamp(),
+      });
+    }
+    await userBatch.commit();
+
+    return {
+      usersReset: usersSnap.size,
+      attemptsDeleted: attemptsSnap.size,
+    };
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -1246,3 +1654,4 @@ export async function deleteCandidateAccountData(uid: string): Promise<void> {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
+

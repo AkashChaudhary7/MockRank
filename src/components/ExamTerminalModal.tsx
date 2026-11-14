@@ -338,12 +338,9 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
 
   const currentQuestion = questions[currentIndex];
 
-  // Reset per-question elapsed timer whenever the active question changes
   useEffect(() => {
     setQuestionSeconds(0);
-    if (!isSolutionsMode) {
-      setShowSolutionInMockScreen(false);
-    }
+    setShowSolutionInMockScreen(isSolutionsMode);
   }, [currentIndex, isSolutionsMode]);
 
   // Mark current question as visited when index changes
@@ -849,12 +846,6 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                 reference.
               </li>
               <li>
-                <strong>Detailed Explanation &amp; Reattempts Supported:</strong> You can view
-                detailed step-by-step explanations directly inside the mock screen using the{' '}
-                <strong>&ldquo;View Solution&rdquo;</strong> button and reattempt any mock paper at
-                any time.
-              </li>
-              <li>
                 <strong>Screen / Window Resize Anti-Cheating Rule:</strong> Avoid resizing the
                 browser window or splitting the screen during an active live test.
               </li>
@@ -955,8 +946,8 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
             </button>
           )}
 
-          {/* Reattempt Paper Button (Always accessible in Solutions Mode or via Header) */}
-          {onReattemptMock && (
+          {/* Reattempt Paper Button — ONLY shown in Solutions Mode, never while actively attempting a mock */}
+          {isSolutionsMode && onReattemptMock && (
             <button
               type="button"
               disabled={reattemptBusy}
@@ -1203,28 +1194,30 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                     </span>
                   </div>
 
-                  {/* Quick Solution Toggle inside Question Sub-Header */}
-                  <button
-                    type="button"
-                    onClick={() => setShowSolutionInMockScreen((prev) => !prev)}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold border transition-colors cursor-pointer ${
-                      showSolutionInMockScreen
-                        ? 'bg-emerald-600 text-white border-emerald-600'
-                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    {showSolutionInMockScreen ? (
-                      <>
-                        <EyeOff className="w-3.5 h-3.5" />
-                        <span>Hide Solution</span>
-                      </>
-                    ) : (
-                      <>
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>View Solution</span>
-                      </>
-                    )}
-                  </button>
+                  {/* Detailed Solution Toggle — ONLY shown in Solutions Mode, never while attempting */}
+                  {isSolutionsMode && (
+                    <button
+                      type="button"
+                      onClick={() => setShowSolutionInMockScreen((prev) => !prev)}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold border transition-colors cursor-pointer ${
+                        showSolutionInMockScreen
+                          ? 'bg-emerald-600 text-white border-emerald-600'
+                          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      {showSolutionInMockScreen ? (
+                        <>
+                          <EyeOff className="w-3.5 h-3.5" />
+                          <span>Hide Solution</span>
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Detailed Solution</span>
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1367,9 +1360,9 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
 
               {/* Standard Testbook Bottom Action Footer Bar */}
               <div className="px-3.5 sm:px-6 py-2.5 sm:py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 shrink-0">
-                {/* Left Group: Mark for Review & Next + Clear Response + View Solution */}
-                <div className="grid grid-cols-3 sm:flex items-center gap-2">
-                  {!isSolutionsMode && (
+                {/* Left Group: Mark for Review & Next + Clear Response (During Exam) OR Detailed Solution + Reattempt (In Solutions Mode) */}
+                <div className="grid grid-cols-2 sm:flex items-center gap-2">
+                  {!isSolutionsMode ? (
                     <>
                       <button
                         type="button"
@@ -1393,22 +1386,38 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                         Clear Response
                       </button>
                     </>
-                  )}
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowSolutionInMockScreen((prev) => !prev)}
+                        className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-semibold border transition-colors cursor-pointer ${
+                          showSolutionInMockScreen
+                            ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200'
+                            : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        <BookOpen className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">
+                          {showSolutionInMockScreen ? 'Hide Detailed Solution' : 'Detailed Solution'}
+                        </span>
+                      </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setShowSolutionInMockScreen((prev) => !prev)}
-                    className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-md text-xs font-semibold border transition-colors cursor-pointer ${
-                      showSolutionInMockScreen
-                        ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200'
-                        : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    <BookOpen className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">
-                      {showSolutionInMockScreen ? 'Hide Explanation' : 'Explanation'}
-                    </span>
-                  </button>
+                      {onReattemptMock && (
+                        <button
+                          type="button"
+                          disabled={reattemptBusy}
+                          onClick={handleTriggerReattemptFromMockScreen}
+                          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-semibold border border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/60 text-sky-900 dark:text-sky-200 hover:bg-sky-100 dark:hover:bg-sky-900 transition-colors cursor-pointer"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">
+                            {reattemptBusy ? 'Resetting...' : 'Reattempt Paper'}
+                          </span>
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
 
                 {/* Right Group: Previous & Save & Next */}

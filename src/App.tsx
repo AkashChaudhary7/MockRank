@@ -347,12 +347,33 @@ export default function App() {
     }
   }, [firebaseUser, syncServerTimeAndAdminMocks]);
 
+  const activeMockIdsSet = useMemo(
+    () => new Set(blueprints.map((b) => b.mockId)),
+    [blueprints]
+  );
+
+  // Only count completed attempts belonging to currently active (non-deleted) mocks
   const completedAttempts = useMemo(
-    () => userAttempts.filter((a) => a.status === 'completed'),
-    [userAttempts]
+    () =>
+      userAttempts.filter(
+        (a) => a.status === 'completed' && activeMockIdsSet.has(a.mockId)
+      ),
+    [userAttempts, activeMockIdsSet]
   );
 
   const completedAttemptsCount = completedAttempts.length;
+
+  const effectiveAverageScore = useMemo(() => {
+    if (completedAttempts.length === 0) return 0;
+    const sum = completedAttempts.reduce((acc, a) => acc + Number(a.score || 0), 0);
+    return Number((sum / completedAttempts.length).toFixed(2));
+  }, [completedAttempts]);
+
+  const effectiveAverageAccuracy = useMemo(() => {
+    if (completedAttempts.length === 0) return 0;
+    const sum = completedAttempts.reduce((acc, a) => acc + Number(a.accuracy || 0), 0);
+    return Number((sum / completedAttempts.length).toFixed(2));
+  }, [completedAttempts]);
 
   // Equal-Mocks Cohort Ranking: Compare ONLY with candidates who have given the exact same number of mocks
   const equalMocksCohortLeaderboard = useMemo(() => {
@@ -366,7 +387,7 @@ export default function App() {
     return found?.rank || 1;
   }, [completedAttemptsCount, equalMocksCohortLeaderboard, userProfile]);
 
-  // Compute Section-Wise & Part-Wise Average Scores
+  // Compute Section-Wise & Part-Wise Average Scores strictly from active completedAttempts
   const { sectionAvgMap, partAAvg, partBAvg } = useMemo(() => {
     const map: Record<SubjectSlug, number> = {
       'general-awareness': 0,
@@ -377,6 +398,39 @@ export default function App() {
       'computer-science': 0,
       'teaching-methodology': 0,
     };
+
+    if (completedAttempts.length === 0) {
+      return { sectionAvgMap: map, partAAvg: 0, partBAvg: 0 };
+    }
+
+    const n = completedAttempts.length;
+    let hasSectionBreakdowns = false;
+
+    for (const att of completedAttempts) {
+      if (att.sectionScores && Object.keys(att.sectionScores).length > 0) {
+        hasSectionBreakdowns = true;
+        for (const item of SECTION_CARDS_META) {
+          map[item.subject] += Number(att.sectionScores[item.subject]?.score || 0);
+        }
+      }
+    }
+
+    if (hasSectionBreakdowns) {
+      for (const item of SECTION_CARDS_META) {
+        map[item.subject] = Number((map[item.subject] / n).toFixed(2));
+      }
+      const pA = Number(
+        (
+          map['general-awareness'] +
+          map['reasoning'] +
+          map['mathematics'] +
+          map['hindi'] +
+          map['english']
+        ).toFixed(2)
+      );
+      const pB = Number((map['computer-science'] + map['teaching-methodology']).toFixed(2));
+      return { sectionAvgMap: map, partAAvg: pA, partBAvg: pB };
+    }
 
     if (userProfile?.sectionAverages && Object.keys(userProfile.sectionAverages).length > 0) {
       for (const item of SECTION_CARDS_META) {
@@ -398,31 +452,6 @@ export default function App() {
         typeof userProfile.partBAverageScore === 'number'
           ? userProfile.partBAverageScore
           : Number((map['computer-science'] + map['teaching-methodology']).toFixed(2));
-      return { sectionAvgMap: map, partAAvg: pA, partBAvg: pB };
-    }
-
-    if (completedAttempts.length > 0) {
-      const n = completedAttempts.length;
-      for (const att of completedAttempts) {
-        if (att.sectionScores) {
-          for (const item of SECTION_CARDS_META) {
-            map[item.subject] += Number(att.sectionScores[item.subject]?.score || 0);
-          }
-        }
-      }
-      for (const item of SECTION_CARDS_META) {
-        map[item.subject] = Number((map[item.subject] / n).toFixed(2));
-      }
-      const pA = Number(
-        (
-          map['general-awareness'] +
-          map['reasoning'] +
-          map['mathematics'] +
-          map['hindi'] +
-          map['english']
-        ).toFixed(2)
-      );
-      const pB = Number((map['computer-science'] + map['teaching-methodology']).toFixed(2));
       return { sectionAvgMap: map, partAAvg: pA, partBAvg: pB };
     }
 
@@ -1267,11 +1296,11 @@ export default function App() {
                       Overall Average Score
                     </div>
                     <div className="text-xl sm:text-3xl font-bold font-mono text-slate-950 dark:text-white mt-1">
-                      {(userProfile?.averageScore || 0).toFixed(2)}
+                      {effectiveAverageScore.toFixed(2)}
                     </div>
                     <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1">
                       Mocks: {completedAttemptsCount} · Acc:{' '}
-                      {(userProfile?.averageAccuracy || 0).toFixed(1)}%
+                      {effectiveAverageAccuracy.toFixed(1)}%
                     </div>
                   </div>
 
@@ -1373,7 +1402,7 @@ export default function App() {
                       <div className="pt-2.5 sm:pt-3 mt-2.5 sm:mt-3 border-t border-slate-800 dark:border-slate-700 flex items-baseline justify-between">
                         <span className="text-[11px] sm:text-xs text-slate-300">Total Avg</span>
                         <span className="text-lg sm:text-2xl font-bold font-mono text-white">
-                          {(userProfile?.averageScore || 0).toFixed(2)}
+                          {effectiveAverageScore.toFixed(2)}
                         </span>
                       </div>
                     </div>
