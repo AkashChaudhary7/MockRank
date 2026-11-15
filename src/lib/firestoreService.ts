@@ -39,6 +39,7 @@ import {
   SubjectSlug,
   UserProfile,
 } from '../types/mockrank';
+import { evaluateMockAttemptClientSide } from './clientExamEngine';
 
 const ALL_7_SUBJECTS: SubjectSlug[] = [
   'general-awareness',
@@ -1652,6 +1653,165 @@ export async function deleteCandidateAccountData(uid: string): Promise<void> {
     await deleteDoc(doc(db, 'users', safeUid));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+/**
+ * Publishes an updated Answer Key / Question Bank for a Mock and recalculates all mock givers' scores
+ * across /attempts/{attemptId}, /leaderboard_mocks/{mockId}/entries/{uid}, /users/{uid}, and /leaderboard_overall/{uid}.
+ */
+export async function publishAnswerKeyAndRecalculateMockScoresAdmin(params: {
+  blueprint: MockBlueprint;
+  questions: PublicQuestion[];
+  sourceFormat?: 'json' | 'html';
+  adminUid: string;
+  adminEmail: string;
+}): Promise<{ attemptsRecalculated: number; usersUpdated: number }> {
+  const safeMockId = sanitizeId(params.blueprint.mockId).slice(0, 32);
+  const path = `mock_papers/${safeMockId}`;
+  try {
+    // 1. Save updated Mock Blueprint & 200-question Paper (with corrected Answer Key) to local memory & Firestore
+    await saveMockConfigAdmin(params.blueprint, params.adminUid, params.adminEmail);
+    await saveMockPaperSingleWrite({
+      mockId: safeMockId,
+      dayNumber: params.blueprint.dayNumber,
+      title: params.blueprint.title,
+      category: params.blueprint.category,
+      unlockDateIST: params.blueprint.unlockDateIST,
+      durationMinutes: params.blueprint.durationMinutes,
+      correctMarks: params.blueprint.correctMarks,
+      incorrectMarks: params.blueprint.incorrectMarks,
+      questions: params.questions,
+      sourceFormat: params.sourceFormat || 'json',
+    });
+
+    // 2. Fetch all attempts and all users to recalculate scores for every candidate who attempted this mock
+    const [allAttemptsSnap, usersSnap] = await Promise.all([
+      getDocs(query(collection(db, 'attempts'), where('uid', '!=', ''), limit(400))),
+      getDocs(query(collection(db, 'users'), where('uid', '!=', ''), limit(200))),
+    ]);
+
+    const usersByUid: Record<string, UserProfile> = {};
+    for (const uDoc of usersSnap.docs) {
+      const u = uDoc.data() as UserProfile;
+      usersByUid[u.uid] = u;
+    }
+
+    const completedAttemptsByUid: Record<string, ExamAttempt[]> = {};
+    const affectedUids = new Set<string>();
+    let attemptsRecalculated = 0;
+
+    const batch = writeBatch(db);
+    const correctMarks = Number(params.blueprint.correctMarks || 1);
+    const incorrectMarks = Number(params.blueprint.incorrectMarks ?? -0.25);
+
+    for (const attDoc of allAttemptsSnap.docs) {
+      const att = attDoc.data() as ExamAttempt;
+      if (att.status !== 'completed') continue;
+
+      if (att.mockId === safeMockId) {
+        const reEval = evaluateMockAttemptClientSide({
+          mockId: safeMockId,
+          questions: params.questions,
+          responses: att.responses || {},
+          timeTakenSeconds: Number(att.timeTakenSeconds || 0),
+          correctMarks,
+          incorrectMarks,
+        });
+
+        const updatedAttempt: ExamAttempt = {
+          ...att,
+          score: reEval.score,
+          partAScore: reEval.partAScore,
+          partBScore: reEval.partBScore,
+          correctAnswers: reEval.correctAnswers,
+          incorrectAnswers: reEval.incorrectAnswers,
+          unattemptedQuestions: reEval.unattemptedQuestions,
+          accuracy: reEval.accuracy,
+          sectionScores: reEval.sectionScores,
+        };
+
+        batch.update(attDoc.ref, {
+          score: reEval.score,
+          partAScore: reEval.partAScore,
+          partBScore: reEval.partBScore,
+          correctAnswers: reEval.correctAnswers,
+          incorrectAnswers: reEval.incorrectAnswers,
+          unattemptedQuestions: reEval.unattemptedQuestions,
+          accuracy: reEval.accuracy,
+          sectionScores: reEval.sectionScores,
+          updatedAt: serverTimestamp(),
+        });
+
+        const uObj = usersByUid[att.uid];
+        const candidateName = sanitizeString(
+          uObj?.username ? `@${uObj.username}` : uObj?.fullName || 'Candidate',
+          BLUEPRINT_CONSTRAINTS.NAME_MAX_LEN,
+          'Candidate'
+        );
+
+        const mockLbRef = doc(db, 'leaderboard_mocks', safeMockId, 'entries', sanitizeId(att.uid));
+        batch.set(mockLbRef, {
+          uid: sanitizeId(att.uid),
+          candidateName,
+          mockId: safeMockId,
+          dayNumber: Math.min(15, Math.max(1, Math.round(att.dayNumber || params.blueprint.dayNumber || 1))),
+          score: reEval.score,
+          partAScore: reEval.partAScore,
+          partBScore: reEval.partBScore,
+          accuracy: reEval.accuracy,
+          timeTakenSeconds: Math.max(0, Math.round(att.timeTakenSeconds || 0)),
+          submittedAt: (att.submittedAt || att.startedAt || new Date().toISOString()).slice(0, 40),
+          sectionScores: reEval.sectionScores,
+        });
+
+        if (!completedAttemptsByUid[att.uid]) {
+          completedAttemptsByUid[att.uid] = [];
+        }
+        completedAttemptsByUid[att.uid].push(updatedAttempt);
+        affectedUids.add(att.uid);
+        attemptsRecalculated += 1;
+      } else {
+        if (!completedAttemptsByUid[att.uid]) {
+          completedAttemptsByUid[att.uid] = [];
+        }
+        completedAttemptsByUid[att.uid].push(att);
+      }
+    }
+
+    const eventId = sanitizeId(`evt_anskey_${Date.now()}`);
+    batch.set(doc(db, 'admin_audit', eventId), {
+      eventId,
+      adminUid: sanitizeId(params.adminUid),
+      adminEmail: sanitizeString(params.adminEmail, 254, 'admin@mockrank.in'),
+      action: 'PUBLISH_ANSWER_KEY_AND_RECALCULATE_SCORES',
+      targetMockId: safeMockId,
+      reason: `Published updated answer key for ${params.blueprint.title} (${safeMockId}) and recalculated ${attemptsRecalculated} mock attempts across ${affectedUids.size} candidates`,
+      createdAt: serverTimestamp(),
+    });
+
+    await batch.commit();
+
+    // 3. Recalculate & sync each affected user's aggregate profile and overall leaderboard
+    for (const uid of affectedUids) {
+      const userObj = usersByUid[uid];
+      const userCompleted = completedAttemptsByUid[uid] || [];
+      const candidateName = userObj?.username
+        ? `@${userObj.username}`
+        : userObj?.fullName || 'Candidate';
+      await syncUserAggregateAndOverallLeaderboard({
+        uid,
+        completedAttempts: userCompleted,
+        candidateName,
+      });
+    }
+
+    return {
+      attemptsRecalculated,
+      usersUpdated: affectedUids.size,
+    };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
   }
 }
 

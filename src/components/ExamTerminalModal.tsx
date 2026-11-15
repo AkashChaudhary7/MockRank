@@ -463,41 +463,9 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
     return () => window.clearInterval(interval);
   }, [durationMinutes, instructionsAccepted, isSolutionsMode, onAutosave]);
 
-  // Anti-Cheating Rule during active exam mode
+  // Anti-Cheating Rule during active exam mode: Resizing the mock screen is allowed, but tab switching auto-submits immediately
   useEffect(() => {
     if (!instructionsAccepted || submittedRef.current || isSolutionsMode) return;
-
-    let baselineWidth = window.innerWidth;
-    let baselineHeight = window.innerHeight;
-    let resizeGuardArmed = false;
-
-    const armTimer = window.setTimeout(() => {
-      baselineWidth = window.innerWidth;
-      baselineHeight = window.innerHeight;
-      resizeGuardArmed = true;
-    }, 1500);
-
-    const handleFullscreenChange = () => {
-      resizeGuardArmed = false;
-      window.setTimeout(() => {
-        baselineWidth = window.innerWidth;
-        baselineHeight = window.innerHeight;
-        resizeGuardArmed = true;
-      }, 600);
-    };
-
-    const handleResize = () => {
-      if (!resizeGuardArmed || submittedRef.current) return;
-      const deltaW = Math.abs(window.innerWidth - baselineWidth);
-      const deltaH = Math.abs(window.innerHeight - baselineHeight);
-      const isTouchMobile = window.innerWidth < 768;
-
-      if (deltaW > 15 || (!isTouchMobile && deltaH > 15) || (isTouchMobile && deltaH > 140)) {
-        triggerFinalSubmit(
-          'DSSSB Anti-Cheating Rule: Screen/Window resize detected during active examination. Exam auto-submitted immediately.'
-        );
-      }
-    };
 
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
@@ -505,21 +473,16 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
 
     const handleVisibilityChange = () => {
       if (document.hidden && !submittedRef.current) {
-        setWarningBanner(
-          'Warning: Switching tabs or minimizing the window is strictly monitored.'
+        triggerFinalSubmit(
+          'DSSSB Anti-Cheating Rule: Tab switching or leaving the exam tab detected during active examination. Exam auto-submitted immediately.'
         );
       }
     };
 
-    window.addEventListener('resize', handleResize);
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('contextmenu', handleContextMenu);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      window.clearTimeout(armTimer);
-      window.removeEventListener('resize', handleResize);
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('contextmenu', handleContextMenu);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
@@ -846,8 +809,10 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                 reference.
               </li>
               <li>
-                <strong>Screen / Window Resize Anti-Cheating Rule:</strong> Avoid resizing the
-                browser window or splitting the screen during an active live test.
+                <strong>Screen Resizing Allowed, Tab Switching Strictly Prohibited:</strong> You
+                may freely resize the mock examination screen to fit your display, but switching
+                browser tabs or minimizing the exam tab during a live attempt will immediately
+                auto-submit your test.
               </li>
             </ul>
           </div>

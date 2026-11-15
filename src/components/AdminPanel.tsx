@@ -41,6 +41,7 @@ import {
   fetchAllAttemptsAdmin,
   fetchAllCandidatesAdmin,
   fetchMockPaperSingleReadCached,
+  publishAnswerKeyAndRecalculateMockScoresAdmin,
   registerAdminSessionInFirestore,
   saveChallengeConfigAdmin,
   saveMockConfigAdmin,
@@ -933,8 +934,39 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     );
   };
 
-  const handleSaveMockAndSyncQuestions = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleChangeQuestionCorrectAnswer = (questionId: string, newCorrectIndex: number) => {
+    setUploadedQuestions((prev) => {
+      const updated = prev.map((q) =>
+        q.id === questionId ? { ...q, correctIndex: newCorrectIndex } : q
+      );
+      const cleanMockId = (editMockId || `MOCK_${String(editDayNumber).padStart(2, '0')}`)
+        .trim()
+        .replace(/[^a-zA-Z0-9_-]/g, '_');
+      const localMock: MockBlueprint = {
+        ...buildCurrentMockBlueprint(cleanMockId, editTitle, updated.length),
+        syncState: 'local-memory',
+      };
+      saveMockToLocalMemoryOnly({
+        mock: localMock,
+        questions: updated,
+        sourceFormat: uploadSourceFormat,
+      });
+      return updated;
+    });
+    setSyncStage('local-memory');
+    setFeedbackMessage(
+      `Updated answer key for question ${questionId} to Option ${['A', 'B', 'C', 'D'][newCorrectIndex]}. Click "Publish Corrected Answer Key & Recalculate All Scores" to update all mock givers' marks.`
+    );
+  };
+
+  const handleChangeQuestionExplanation = (questionId: string, newExplanation: string) => {
+    setUploadedQuestions((prev) =>
+      prev.map((q) => (q.id === questionId ? { ...q, explanation: newExplanation } : q))
+    );
+  };
+
+  const handleSaveMockAndSyncQuestions = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setSyncingPaper(true);
     setFeedbackMessage(null);
     setUploadErrorMsg(null);
@@ -954,31 +986,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         syncState: 'global-firestore',
       };
 
-      await saveMockConfigAdmin(updatedMock, adminUid, adminEmail);
-
-      await saveMockPaperSingleWrite({
-        mockId: cleanMockId,
-        dayNumber: updatedMock.dayNumber,
-        title: updatedMock.title,
-        category: updatedMock.category,
-        unlockDateIST: editUnlockDateIST,
-        durationMinutes: editDuration,
-        correctMarks: editCorrectMarks,
-        incorrectMarks: editIncorrectMarks,
+      const recalcResult = await publishAnswerKeyAndRecalculateMockScoresAdmin({
+        blueprint: updatedMock,
         questions: questionsToSave,
         sourceFormat: uploadSourceFormat,
+        adminUid,
+        adminEmail,
       });
 
       await onConfigUpdated();
+      await loadCandidatesAndAnalytics();
       setIsCreatingNewMock(false);
       setSelectedMockId(cleanMockId);
       setUploadedQuestions(questionsToSave);
       setSyncStage('global-firestore');
       setUploadStatusMsg(
-        `Step 2 Complete — Globally synced ${questionsToSave.length} questions for "${updatedMock.title}" to Firestore in 1 write operation & cached locally!`
+        `Published ${questionsToSave.length} questions & answer key for "${updatedMock.title}" to Firestore and recalculated ${recalcResult.attemptsRecalculated} mock attempts across ${recalcResult.usersUpdated} candidates!`
       );
       setFeedbackMessage(
-        `Globally Synced "${updatedMock.title}" in category "${updatedMock.category}" (${questionsToSave.length} questions) to Firestore across all devices in 1 write operation!`
+        `Published "${updatedMock.title}" (${questionsToSave.length} questions) & recalculated scores for ${recalcResult.attemptsRecalculated} mock attempts (${recalcResult.usersUpdated} candidates)!`
       );
     } catch (err) {
       setUploadErrorMsg(
@@ -1762,50 +1788,68 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                         {q.question}
                                       </div>
 
-                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                        {q.options.map((optText, optIdx) => {
-                                          const isCorrect = q.correctIndex === optIdx;
-                                          return (
-                                            <div
-                                              key={optIdx}
-                                              className={`px-3 py-2 rounded-lg border text-xs flex items-start gap-2 ${
-                                                isCorrect
-                                                  ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-semibold'
-                                                  : 'bg-white border-slate-200 text-slate-700'
-                                              }`}
-                                            >
-                                              <span
-                                                className={`font-mono uppercase px-1.5 py-0.2 rounded text-[11px] shrink-0 ${
+                                        <div className="text-[11px] font-semibold text-emerald-800">
+                                          Click any option (a / b / c / d) below to change the official correct answer for Q{displayNum}:
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                          {q.options.map((optText, optIdx) => {
+                                            const isCorrect = q.correctIndex === optIdx;
+                                            return (
+                                              <button
+                                                key={optIdx}
+                                                type="button"
+                                                onClick={() =>
+                                                  handleChangeQuestionCorrectAnswer(q.id, optIdx)
+                                                }
+                                                className={`px-3 py-2 rounded-lg border text-xs flex items-start gap-2 text-left transition-colors cursor-pointer ${
                                                   isCorrect
-                                                    ? 'bg-emerald-700 text-white font-bold'
-                                                    : 'bg-slate-100 text-slate-600'
+                                                    ? 'bg-emerald-50 border-emerald-400 text-emerald-950 font-semibold ring-1 ring-emerald-400'
+                                                    : 'bg-white border-slate-200 text-slate-700 hover:border-slate-400'
                                                 }`}
                                               >
-                                                {optionLabels[optIdx] || optIdx + 1}
-                                              </span>
-                                              <span className="flex-1 break-words">{optText}</span>
-                                              {isCorrect && (
-                                                <span className="text-[10px] font-mono font-bold text-emerald-700 shrink-0">
-                                                  ✓ CORRECT
+                                                <span
+                                                  className={`font-mono uppercase px-1.5 py-0.2 rounded text-[11px] shrink-0 ${
+                                                    isCorrect
+                                                      ? 'bg-emerald-700 text-white font-bold'
+                                                      : 'bg-slate-100 text-slate-600'
+                                                  }`}
+                                                >
+                                                  {optionLabels[optIdx] || optIdx + 1}
                                                 </span>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-
-                                      {q.explanation && (
-                                        <div className="p-2.5 rounded bg-white border border-slate-200 text-[11px] text-slate-600 leading-relaxed">
-                                          <span className="font-bold text-slate-800 mr-1">
-                                            Explanation:
-                                          </span>
-                                          {q.explanation}
+                                                <span className="flex-1 break-words">{optText}</span>
+                                                <span
+                                                  className={`text-[10px] font-mono font-bold shrink-0 ${
+                                                    isCorrect
+                                                      ? 'text-emerald-700'
+                                                      : 'text-slate-400'
+                                                  }`}
+                                                >
+                                                  {isCorrect ? '✓ CORRECT KEY' : 'Set Correct'}
+                                                </span>
+                                              </button>
+                                            );
+                                          })}
                                         </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
+
+                                        <div className="pt-1">
+                                          <label className="block text-[10px] font-semibold text-slate-500 mb-1">
+                                            Official Explanation (Optional Edit):
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={q.explanation || ''}
+                                            onChange={(e) =>
+                                              handleChangeQuestionExplanation(q.id, e.target.value)
+                                            }
+                                            placeholder="Enter or update official explanation..."
+                                            className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded bg-white text-slate-800"
+                                          />
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                             )}
 
                             {/* Pagination Controls */}
@@ -2003,7 +2047,260 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
           {activeTab === 'question-bank' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between gap-4">
+              {/* Interactive Mock Question Bank & Answer Key Editor with Live Score Recalculation */}
+              <div className="p-5 rounded-xl border border-slate-200 bg-slate-50 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">
+                      Mock Question Bank &amp; Official Answer Key Editor
+                    </h3>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      Select any Mock below to inspect all its questions, click any option (A / B /
+                      C / D) to correct a wrong answer key, and publish to automatically recalculate
+                      all mock givers&apos; scores and leaderboards.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={syncingPaper || uploadedQuestions.length === 0}
+                    onClick={() => handleSaveMockAndSyncQuestions()}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 rounded-lg cursor-pointer shadow-2xs"
+                  >
+                    <CloudUpload className="w-4 h-4" />
+                    <span>
+                      {syncingPaper
+                        ? 'Publishing Answer Key & Recalculating Scores...'
+                        : 'Publish Corrected Answer Key & Recalculate All Scores'}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Mock Selector Pills */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {blueprints.map((bp) => {
+                    const isSelected = !isCreatingNewMock && selectedMockId === bp.mockId;
+                    return (
+                      <button
+                        key={bp.mockId}
+                        type="button"
+                        onClick={() => {
+                          setIsCreatingNewMock(false);
+                          setSelectedMockId(bp.mockId);
+                        }}
+                        className={`px-3.5 py-2 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-slate-900 text-white border-slate-900'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {bp.title} ({bp.totalQuestions} Qs)
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Section & Search Filter inside Question Bank */}
+                {uploadedQuestions.length > 0 && (() => {
+                  const qbFiltered = uploadedQuestions.filter((q, idx) => {
+                    if (previewSubjectFilter !== 'ALL' && q.subject !== previewSubjectFilter) {
+                      return false;
+                    }
+                    if (!previewSearchText.trim()) return true;
+                    const queryStr = previewSearchText.toLowerCase().trim();
+                    const qNumStr = String(q.questionNumber || idx + 1);
+                    return (
+                      qNumStr === queryStr ||
+                      `q${qNumStr}` === queryStr ||
+                      q.id.toLowerCase().includes(queryStr) ||
+                      q.question.toLowerCase().includes(queryStr) ||
+                      q.topic.toLowerCase().includes(queryStr) ||
+                      q.options.some((o) => o.toLowerCase().includes(queryStr))
+                    );
+                  });
+
+                  const totalPages = Math.max(
+                    1,
+                    Math.ceil(qbFiltered.length / PREVIEW_PAGE_SIZE)
+                  );
+                  const safePage = Math.min(previewPage, totalPages);
+                  const pageSlice = qbFiltered.slice(
+                    (safePage - 1) * PREVIEW_PAGE_SIZE,
+                    safePage * PREVIEW_PAGE_SIZE
+                  );
+
+                  return (
+                    <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPreviewSubjectFilter('ALL');
+                              setPreviewPage(1);
+                            }}
+                            className={`px-2.5 py-1 rounded text-xs font-semibold cursor-pointer ${
+                              previewSubjectFilter === 'ALL'
+                                ? 'bg-slate-900 text-white'
+                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                            }`}
+                          >
+                            All ({uploadedQuestions.length})
+                          </button>
+                          {VALID_SUBJECTS.map((subj) => {
+                            const count = uploadedQuestions.filter(
+                              (q) => q.subject === subj
+                            ).length;
+                            return (
+                              <button
+                                key={subj}
+                                type="button"
+                                onClick={() => {
+                                  setPreviewSubjectFilter(subj);
+                                  setPreviewPage(1);
+                                }}
+                                className={`px-2.5 py-1 rounded text-xs font-semibold cursor-pointer ${
+                                  previewSubjectFilter === subj
+                                    ? 'bg-slate-900 text-white'
+                                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                }`}
+                              >
+                                {subj} ({count})
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <div className="relative w-full sm:w-64">
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
+                          <input
+                            type="text"
+                            value={previewSearchText}
+                            onChange={(e) => {
+                              setPreviewSearchText(e.target.value);
+                              setPreviewPage(1);
+                            }}
+                            placeholder="Search Q#, stem, option..."
+                            className="w-full pl-8 pr-2.5 py-1.5 text-xs border border-slate-200 rounded-lg"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+                        {pageSlice.map((q) => {
+                          const displayNum = q.questionNumber || 1;
+                          const optionLabels = ['A', 'B', 'C', 'D'];
+                          return (
+                            <div
+                              key={q.id}
+                              className="p-3.5 rounded-lg border border-slate-200 bg-slate-50/70 space-y-2.5"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="px-2 py-0.5 rounded bg-slate-900 text-white font-mono text-xs font-bold">
+                                    Q{displayNum}
+                                  </span>
+                                  <span className="px-2 py-0.5 rounded bg-white border border-slate-200 font-mono text-[11px] text-slate-700">
+                                    {q.part || inferPartFromSubject(q.subject)} · {q.subject}
+                                  </span>
+                                  <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 font-mono text-[11px] font-bold">
+                                    Current Key: Option {optionLabels[q.correctIndex ?? 0] || 'A'}
+                                  </span>
+                                </div>
+                                <span className="font-mono text-[10px] text-slate-400">
+                                  ID: {q.id}
+                                </span>
+                              </div>
+
+                              <div className="text-xs sm:text-sm font-semibold text-slate-900 whitespace-pre-line leading-relaxed">
+                                {q.question}
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {q.options.map((optText, optIdx) => {
+                                  const isCorrect = q.correctIndex === optIdx;
+                                  return (
+                                    <button
+                                      key={optIdx}
+                                      type="button"
+                                      onClick={() =>
+                                        handleChangeQuestionCorrectAnswer(q.id, optIdx)
+                                      }
+                                      className={`px-3 py-2 rounded-lg border text-xs flex items-start gap-2 text-left transition-colors cursor-pointer ${
+                                        isCorrect
+                                          ? 'bg-emerald-50 border-emerald-500 text-emerald-950 font-semibold ring-1 ring-emerald-500'
+                                          : 'bg-white border-slate-200 text-slate-700 hover:border-slate-400'
+                                      }`}
+                                    >
+                                      <span
+                                        className={`font-mono uppercase px-1.5 py-0.5 rounded text-[11px] shrink-0 ${
+                                          isCorrect
+                                            ? 'bg-emerald-700 text-white font-bold'
+                                            : 'bg-slate-100 text-slate-600'
+                                        }`}
+                                      >
+                                        {optionLabels[optIdx]}
+                                      </span>
+                                      <span className="flex-1 break-words">{optText}</span>
+                                      <span
+                                        className={`text-[10px] font-mono font-bold shrink-0 ${
+                                          isCorrect ? 'text-emerald-700' : 'text-slate-400'
+                                        }`}
+                                      >
+                                        {isCorrect ? '✓ CORRECT' : 'Click to Set'}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              <div className="pt-1">
+                                <input
+                                  type="text"
+                                  value={q.explanation || ''}
+                                  onChange={(e) =>
+                                    handleChangeQuestionExplanation(q.id, e.target.value)
+                                  }
+                                  placeholder="Official explanation for this question..."
+                                  className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded bg-white text-slate-800"
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-xs">
+                        <span className="text-slate-600 font-mono">
+                          Page {safePage} of {totalPages} ({qbFiltered.length} questions)
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            disabled={safePage <= 1}
+                            onClick={() => setPreviewPage((p) => Math.max(1, p - 1))}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                          >
+                            <ChevronLeft className="w-3.5 h-3.5" />
+                            <span>Prev</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={safePage >= totalPages}
+                            onClick={() => setPreviewPage((p) => Math.min(totalPages, p + 1))}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                          >
+                            <span>Next</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="flex items-center justify-between gap-4 pt-2 border-t border-slate-200">
                 <h3 className="text-base font-bold text-slate-900">
                   Master Subject Question Bank Validator (7 Subjects)
                 </h3>

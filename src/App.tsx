@@ -75,10 +75,11 @@ import {
 import { ExamTerminalModal } from './components/ExamTerminalModal';
 import { MockResultModal } from './components/MockResultModal';
 import { LeaderboardModal } from './components/LeaderboardModal';
+import { MistakeVaultModal } from './components/MistakeVaultModal';
 import { AdminPanel } from './components/AdminPanel';
 import { LegalModal } from './components/LegalModal';
 
-type StudentNavTab = 'dashboard' | 'mocks' | 'leaderboard' | 'result';
+type StudentNavTab = 'dashboard' | 'mocks' | 'leaderboard' | 'mistake-vault' | 'result';
 
 interface ActiveExamSession {
   mockId: string;
@@ -957,6 +958,20 @@ export default function App() {
             >
               Leaderboard
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveNav('mistake-vault');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className={`py-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                activeNav === 'mistake-vault'
+                  ? 'text-rose-600 dark:text-rose-400 font-semibold border-b-2 border-rose-600 dark:border-rose-400'
+                  : 'hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              Mistake Vault
+            </button>
           </nav>
 
           {/* Zone 3: Dark Mode Toggle & Primary Action */}
@@ -1007,7 +1022,7 @@ export default function App() {
         </div>
 
         {/* Mobile Segmented Navigation Bar (< md) */}
-        <nav className="md:hidden grid grid-cols-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 text-xs font-medium text-slate-600 dark:text-slate-400">
+        <nav className="md:hidden grid grid-cols-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 text-[11px] font-medium text-slate-600 dark:text-slate-400">
           <button
             type="button"
             onClick={() => setActiveNav('dashboard')}
@@ -1033,13 +1048,27 @@ export default function App() {
           <button
             type="button"
             onClick={() => openLeaderboardPage('overall')}
-            className={`py-2.5 text-center transition-colors cursor-pointer ${
+            className={`py-2.5 text-center transition-colors border-r border-slate-200/70 dark:border-slate-800/70 cursor-pointer ${
               activeNav === 'leaderboard'
-                ? 'text-slate-950 dark:text-white font-bold border-b-2 border-slate-900 dark:border-white bg-white dark:bg-slate-900'
+                ? 'text-slate-950 dark:text-white font-bold border-b-2 border-b-slate-900 dark:border-b-white bg-white dark:bg-slate-900'
                 : 'hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
             Leaderboard
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveNav('mistake-vault');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className={`py-2.5 text-center transition-colors cursor-pointer ${
+              activeNav === 'mistake-vault'
+                ? 'text-rose-600 dark:text-rose-400 font-bold border-b-2 border-rose-600 dark:border-rose-400 bg-white dark:bg-slate-900'
+                : 'hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            Mistake Vault
           </button>
         </nav>
       </header>
@@ -1231,6 +1260,16 @@ export default function App() {
             onRefreshOverall={() => setLeaderboardRefreshNonce((n) => n + 1)}
             onBackToDashboard={() => setActiveNav('dashboard')}
             onBackToMocks={() => setActiveNav('mocks')}
+          />
+        ) : activeNav === 'mistake-vault' ? (
+          /* Dedicated Full-Page View for Mistake Vault (Beside Leaderboard) */
+          <MistakeVaultModal
+            completedAttempts={completedAttempts}
+            blueprints={blueprints}
+            startDateIST={challengeConfig.startDateIST}
+            onBackToDashboard={() => setActiveNav('dashboard')}
+            onBackToMocks={() => setActiveNav('mocks')}
+            onOpenMockSolutions={(bp) => handleStartMock(bp, { mode: 'solutions' })}
           />
         ) : (
           /* Authenticated Student Views: Dashboard | Mocks */
