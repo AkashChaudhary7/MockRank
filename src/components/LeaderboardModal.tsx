@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, RefreshCw, Search, Trophy, X } from 'lucide-react';
+import { ArrowLeft, BarChart3, RefreshCw, Search, Shield, Trophy, X } from 'lucide-react';
 import {
   LeaderboardMockEntry,
   LeaderboardOverallEntry,
@@ -17,6 +17,9 @@ interface LeaderboardPageProps {
   initialScope: 'overall' | string;
   overallEntries: LeaderboardOverallEntry[];
   blueprints: MockBlueprint[];
+  isAdmin?: boolean;
+  inspectingUid?: string | null;
+  onInspectUserScorecard?: (uid: string, candidateName: string, preferredMockId?: string) => void;
   onRefreshOverall: () => void;
   onBackToDashboard: () => void;
   onBackToMocks: () => void;
@@ -28,6 +31,9 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
   initialScope,
   overallEntries,
   blueprints,
+  isAdmin = false,
+  inspectingUid = null,
+  onInspectUserScorecard,
   onRefreshOverall,
   onBackToDashboard,
   onBackToMocks,
@@ -240,6 +246,16 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
             </span>
           </div>
         </div>
+
+        {isAdmin && onInspectUserScorecard && (
+          <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800 flex items-center gap-2 text-xs text-emerald-800 dark:text-emerald-300 font-medium">
+            <Shield className="w-3.5 h-3.5 shrink-0" />
+            <span>
+              Admin Rights Active: Click any candidate&apos;s score or &ldquo;Whole Scorecard&rdquo;
+              to inspect their complete Scorecard, Section Breakdown &amp; Solutions.
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Table Body */}
@@ -286,11 +302,17 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
                     <th className="py-3.5 px-4 font-semibold text-right whitespace-nowrap">
                       Avg Accuracy
                     </th>
+                    {isAdmin && onInspectUserScorecard && (
+                      <th className="py-3.5 px-4 font-semibold text-right whitespace-nowrap">
+                        Admin Inspector
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                   {filteredOverallEntries.map((entry) => {
                     const isMe = entry.uid === currentUid;
+                    const isLoadingThis = inspectingUid === entry.uid;
                     return (
                       <tr
                         key={entry.uid}
@@ -304,11 +326,40 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
                           #{entry.rank}
                         </td>
                         <td className="py-3.5 px-4 whitespace-nowrap">
-                          {entry.candidateName}
-                          {isMe ? ' (You)' : ''}
+                          {isAdmin && onInspectUserScorecard ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onInspectUserScorecard(entry.uid, entry.candidateName)
+                              }
+                              className="text-left font-semibold hover:underline text-slate-900 dark:text-white cursor-pointer"
+                            >
+                              {entry.candidateName}
+                              {isMe ? ' (You)' : ''}
+                            </button>
+                          ) : (
+                            <>
+                              {entry.candidateName}
+                              {isMe ? ' (You)' : ''}
+                            </>
+                          )}
                         </td>
                         <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white whitespace-nowrap">
-                          {entry.averageScore.toFixed(2)}
+                          {isAdmin && onInspectUserScorecard ? (
+                            <button
+                              type="button"
+                              disabled={isLoadingThis}
+                              onClick={() =>
+                                onInspectUserScorecard(entry.uid, entry.candidateName)
+                              }
+                              title="Click to open candidate's whole scorecard"
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800 underline decoration-dotted cursor-pointer"
+                            >
+                              {isLoadingThis ? 'Loading...' : entry.averageScore.toFixed(2)}
+                            </button>
+                          ) : (
+                            entry.averageScore.toFixed(2)
+                          )}
                         </td>
                         <td className="py-3.5 px-4 text-right font-mono whitespace-nowrap">
                           {entry.mocksAttempted}
@@ -322,6 +373,21 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
                         <td className="py-3.5 px-4 text-right font-mono whitespace-nowrap">
                           {entry.averageAccuracy.toFixed(1)}%
                         </td>
+                        {isAdmin && onInspectUserScorecard && (
+                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                            <button
+                              type="button"
+                              disabled={isLoadingThis}
+                              onClick={() =>
+                                onInspectUserScorecard(entry.uid, entry.candidateName)
+                              }
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-white dark:text-slate-950 bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-slate-200 rounded-md cursor-pointer"
+                            >
+                              <BarChart3 className="w-3 h-3" />
+                              <span>{isLoadingThis ? 'Opening...' : 'Whole Scorecard'}</span>
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -368,11 +434,17 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
                   <th className="py-3.5 px-4 font-semibold text-right whitespace-nowrap">
                     Submitted At
                   </th>
+                  {isAdmin && onInspectUserScorecard && (
+                    <th className="py-3.5 px-4 font-semibold text-right whitespace-nowrap">
+                      Admin Inspector
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                 {filteredMockEntries.map((entry) => {
                   const isMe = entry.uid === currentUid;
+                  const isLoadingThis = inspectingUid === entry.uid;
                   const mins = Math.floor(entry.timeTakenSeconds / 60);
                   const secs = entry.timeTakenSeconds % 60;
                   return (
@@ -388,11 +460,40 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
                         #{entry.rank}
                       </td>
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        {entry.candidateName}
-                        {isMe ? ' (You)' : ''}
+                        {isAdmin && onInspectUserScorecard ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onInspectUserScorecard(entry.uid, entry.candidateName, selectedScope)
+                            }
+                            className="text-left font-semibold hover:underline text-slate-900 dark:text-white cursor-pointer"
+                          >
+                            {entry.candidateName}
+                            {isMe ? ' (You)' : ''}
+                          </button>
+                        ) : (
+                          <>
+                            {entry.candidateName}
+                            {isMe ? ' (You)' : ''}
+                          </>
+                        )}
                       </td>
                       <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white whitespace-nowrap">
-                        {entry.score.toFixed(2)}
+                        {isAdmin && onInspectUserScorecard ? (
+                          <button
+                            type="button"
+                            disabled={isLoadingThis}
+                            onClick={() =>
+                              onInspectUserScorecard(entry.uid, entry.candidateName, selectedScope)
+                            }
+                            title="Click to view candidate's complete mock scorecard"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800 underline decoration-dotted cursor-pointer"
+                          >
+                            {isLoadingThis ? 'Loading...' : entry.score.toFixed(2)}
+                          </button>
+                        ) : (
+                          entry.score.toFixed(2)
+                        )}
                       </td>
                       <td className="py-3.5 px-4 text-right font-mono text-emerald-700 dark:text-emerald-400 whitespace-nowrap">
                         {entry.correctAnswers}
@@ -406,6 +507,21 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
                       <td className="py-3.5 px-4 text-right font-mono text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
                         {entry.submittedAt.slice(0, 16).replace('T', ' ')}
                       </td>
+                      {isAdmin && onInspectUserScorecard && (
+                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                          <button
+                            type="button"
+                            disabled={isLoadingThis}
+                            onClick={() =>
+                              onInspectUserScorecard(entry.uid, entry.candidateName, selectedScope)
+                            }
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-white dark:text-slate-950 bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-slate-200 rounded-md cursor-pointer"
+                          >
+                            <BarChart3 className="w-3 h-3" />
+                            <span>{isLoadingThis ? 'Opening...' : 'Whole Scorecard'}</span>
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

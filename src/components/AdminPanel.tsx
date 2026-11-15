@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Activity,
+  BarChart3,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -11,6 +12,7 @@ import {
   FileJson,
   FolderPlus,
   HardDrive,
+  Lock,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -41,12 +43,14 @@ import {
   fetchAllAttemptsAdmin,
   fetchAllCandidatesAdmin,
   fetchMockPaperSingleReadCached,
+  hasStoredAdminConsoleSession,
   publishAnswerKeyAndRecalculateMockScoresAdmin,
   registerAdminSessionInFirestore,
   saveChallengeConfigAdmin,
   saveMockConfigAdmin,
   saveMockPaperSingleWrite,
   saveMockToLocalMemoryOnly,
+  setStoredAdminConsoleSession,
 } from '../lib/firestoreService';
 import {
   fetchQuestionBankHealthSafe,
@@ -56,8 +60,16 @@ import {
 interface AdminPanelProps {
   adminUid: string;
   adminEmail: string;
+  isAdminActive?: boolean;
   challengeConfig: ChallengeConfig;
   blueprints: MockBlueprint[];
+  onAdminAuthenticated?: () => void;
+  onAdminRevoked?: () => void;
+  onInspectUserScorecard?: (
+    uid: string,
+    candidateName: string,
+    preferredMockId?: string
+  ) => void;
   onConfigUpdated: () => Promise<void>;
   onClose: () => void;
 }
@@ -557,12 +569,18 @@ function generateFull200QuestionsTemplate(mockId: string, mockTitle: string): Pu
 export const AdminPanel: React.FC<AdminPanelProps> = ({
   adminUid,
   adminEmail,
+  isAdminActive = false,
   challengeConfig,
   blueprints,
+  onAdminAuthenticated,
+  onAdminRevoked,
+  onInspectUserScorecard,
   onConfigUpdated,
   onClose,
 }) => {
-  const [isPasswordVerified, setIsPasswordVerified] = useState<boolean>(false);
+  const [isPasswordVerified, setIsPasswordVerified] = useState<boolean>(
+    () => Boolean(isAdminActive || hasStoredAdminConsoleSession())
+  );
   const [adminPasswordInput, setAdminPasswordInput] = useState<string>('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [verifyingPassword, setVerifyingPassword] = useState<boolean>(false);
@@ -1136,13 +1154,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         setPasswordError('Invalid administrator password. Access denied.');
       } else {
         await registerAdminSessionInFirestore(adminUid, adminEmail);
+        setStoredAdminConsoleSession(true, adminUid, adminEmail);
         setIsPasswordVerified(true);
+        onAdminAuthenticated?.();
       }
     } catch (err) {
       setPasswordError(err instanceof Error ? err.message : 'Password verification failed.');
     } finally {
       setVerifyingPassword(false);
     }
+  };
+
+  const handleLockAdminSession = () => {
+    setStoredAdminConsoleSession(false);
+    setIsPasswordVerified(false);
+    setAdminPasswordInput('');
+    onAdminRevoked?.();
+    onClose();
   };
 
   if (!isPasswordVerified) {
@@ -1220,13 +1248,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </h2>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 text-slate-300 hover:text-white border border-slate-700 rounded-lg cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleLockAdminSession}
+              title="Lock Admin Console & Exit Admin Rights"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700 rounded-lg cursor-pointer"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Lock Admin</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg cursor-pointer"
+            >
+              <span>Close (Keep Admin Rights)</span>
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Section Tabs */}
@@ -2458,48 +2498,91 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200">
-                        {filteredCandidates.map((c) => (
-                          <tr key={c.uid}>
-                            <td className="py-2.5 px-4 font-medium text-slate-900">
-                              {c.username || c.fullName}
-                            </td>
-                            <td className="py-2.5 px-3 font-mono text-xs text-slate-600">
-                              {c.email}
-                            </td>
-                            <td className="py-2.5 px-3 text-right font-mono">
-                              {c.mocksAttempted}
-                            </td>
-                            <td className="py-2.5 px-3 text-right font-mono font-semibold">
-                              {c.averageScore.toFixed(2)}
-                            </td>
-                            <td className="py-2.5 px-3 text-right font-mono">
-                              {(c.partAAverageScore || 0).toFixed(2)}
-                            </td>
-                            <td className="py-2.5 px-3 text-right font-mono">
-                              {(c.partBAverageScore || 0).toFixed(2)}
-                            </td>
-                            <td className="py-2.5 px-4 text-right">
-                              <button
-                                type="button"
-                                disabled={resettingUserUid === c.uid}
-                                onClick={() => handleResetSingleUserMarks(c)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 border border-red-200 rounded cursor-pointer"
-                              >
-                                <RotateCcw className="w-3 h-3" />
-                                <span>
-                                  {resettingUserUid === c.uid ? 'Resetting...' : 'Reset Marks'}
-                                </span>
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                        {filteredCandidates.map((c) => {
+                          const displayCandidateName = c.username ? `@${c.username}` : c.fullName;
+                          return (
+                            <tr key={c.uid}>
+                              <td className="py-2.5 px-4 font-medium text-slate-900">
+                                {onInspectUserScorecard ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      onInspectUserScorecard(c.uid, displayCandidateName);
+                                      onClose();
+                                    }}
+                                    className="font-semibold text-slate-900 hover:underline text-left cursor-pointer"
+                                  >
+                                    {c.username || c.fullName}
+                                  </button>
+                                ) : (
+                                  c.username || c.fullName
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono text-xs text-slate-600">
+                                {c.email}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono">
+                                {c.mocksAttempted}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono font-semibold">
+                                {onInspectUserScorecard ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      onInspectUserScorecard(c.uid, displayCandidateName);
+                                      onClose();
+                                    }}
+                                    title="Click to view candidate's whole scorecard"
+                                    className="px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 underline decoration-dotted cursor-pointer"
+                                  >
+                                    {c.averageScore.toFixed(2)}
+                                  </button>
+                                ) : (
+                                  c.averageScore.toFixed(2)
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono">
+                                {(c.partAAverageScore || 0).toFixed(2)}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono">
+                                {(c.partBAverageScore || 0).toFixed(2)}
+                              </td>
+                              <td className="py-2.5 px-4 text-right space-x-1.5 whitespace-nowrap">
+                                {onInspectUserScorecard && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      onInspectUserScorecard(c.uid, displayCandidateName);
+                                      onClose();
+                                    }}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded cursor-pointer"
+                                  >
+                                    <BarChart3 className="w-3 h-3" />
+                                    <span>Whole Scorecard</span>
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  disabled={resettingUserUid === c.uid}
+                                  onClick={() => handleResetSingleUserMarks(c)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 border border-red-200 rounded cursor-pointer"
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                  <span>
+                                    {resettingUserUid === c.uid ? 'Resetting...' : 'Reset Marks'}
+                                  </span>
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
 
                   <div>
                     <h4 className="text-sm font-bold text-slate-900 mb-2">
-                      Recent Official Attempts (Reset or Invalidate Attempts)
+                      Recent Official Attempts (View Whole Scorecard, Reset or Invalidate)
                     </h4>
                     <div className="border border-slate-200 rounded-lg overflow-x-auto">
                       <table className="w-full text-left border-collapse text-xs">
@@ -2514,37 +2597,77 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200">
-                          {allAttempts.map((att) => (
-                            <tr key={att.attemptId}>
-                              <td className="py-2.5 px-3 font-mono">{att.attemptId}</td>
-                              <td className="py-2.5 px-3 font-mono">{att.mockId}</td>
-                              <td className="py-2.5 px-3">{att.status}</td>
-                              <td className="py-2.5 px-3 text-right font-mono font-semibold">
-                                {att.score.toFixed(2)}
-                              </td>
-                              <td className="py-2.5 px-3 text-right font-mono">
-                                {att.accuracy.toFixed(1)}%
-                              </td>
-                              <td className="py-2.5 px-3 text-right space-x-2">
-                                <button
-                                  type="button"
-                                  onClick={() => handleResetOrInvalidate(att, 'reset')}
-                                  className="px-2 py-1 text-slate-700 hover:bg-slate-100 border border-slate-200 rounded cursor-pointer"
-                                >
-                                  Reset Attempt
-                                </button>
-                                {att.status !== 'invalidated' && (
+                          {allAttempts.map((att) => {
+                            const matchedUser = candidates.find((u) => u.uid === att.uid);
+                            const candidateLabel = matchedUser?.username
+                              ? `@${matchedUser.username}`
+                              : matchedUser?.fullName || att.uid;
+                            return (
+                              <tr key={att.attemptId}>
+                                <td className="py-2.5 px-3 font-mono">{att.attemptId}</td>
+                                <td className="py-2.5 px-3 font-mono">{att.mockId}</td>
+                                <td className="py-2.5 px-3">{att.status}</td>
+                                <td className="py-2.5 px-3 text-right font-mono font-semibold">
+                                  {onInspectUserScorecard && att.status === 'completed' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        onInspectUserScorecard(
+                                          att.uid,
+                                          candidateLabel,
+                                          att.mockId
+                                        );
+                                        onClose();
+                                      }}
+                                      className="px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 underline decoration-dotted cursor-pointer"
+                                    >
+                                      {att.score.toFixed(2)}
+                                    </button>
+                                  ) : (
+                                    att.score.toFixed(2)
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-mono">
+                                  {att.accuracy.toFixed(1)}%
+                                </td>
+                                <td className="py-2.5 px-3 text-right space-x-2 whitespace-nowrap">
+                                  {onInspectUserScorecard && att.status === 'completed' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        onInspectUserScorecard(
+                                          att.uid,
+                                          candidateLabel,
+                                          att.mockId
+                                        );
+                                        onClose();
+                                      }}
+                                      className="inline-flex items-center gap-1 px-2 py-1 text-white bg-slate-900 hover:bg-slate-800 rounded cursor-pointer"
+                                    >
+                                      <BarChart3 className="w-3 h-3" />
+                                      <span>Scorecard</span>
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
-                                    onClick={() => handleResetOrInvalidate(att, 'invalidate')}
-                                    className="px-2 py-1 text-red-700 hover:bg-red-50 border border-red-200 rounded cursor-pointer"
+                                    onClick={() => handleResetOrInvalidate(att, 'reset')}
+                                    className="px-2 py-1 text-slate-700 hover:bg-slate-100 border border-slate-200 rounded cursor-pointer"
                                   >
-                                    Invalidate
+                                    Reset Attempt
                                   </button>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
+                                  {att.status !== 'invalidated' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleResetOrInvalidate(att, 'invalidate')}
+                                      className="px-2 py-1 text-red-700 hover:bg-red-50 border border-red-200 rounded cursor-pointer"
+                                    >
+                                      Invalidate
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>

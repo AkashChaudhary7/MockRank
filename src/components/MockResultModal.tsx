@@ -241,9 +241,16 @@ export const MockResultModal: React.FC<MockResultPageProps> = ({
               Dashboard
             </button>
           </div>
-          <h1 className="text-xl sm:text-3xl font-bold text-slate-950 dark:text-white leading-snug">
-            {mockTitle} — Scorecard
-          </h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl sm:text-3xl font-bold text-slate-950 dark:text-white leading-snug">
+              {mockTitle} — Scorecard
+            </h1>
+            {candidateName && (
+              <span className="px-2.5 py-0.5 rounded-md text-xs font-mono font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
+                Candidate: {candidateName}
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 xs:grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">

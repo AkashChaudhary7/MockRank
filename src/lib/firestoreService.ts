@@ -176,7 +176,68 @@ export async function saveCandidateUsername(uid: string, username: string): Prom
   }
 }
 
+const ADMIN_CONSOLE_SESSION_KEY = 'mockrank_admin_console_session_v1';
+
+export function hasStoredAdminConsoleSession(): boolean {
+  try {
+    const raw =
+      sessionStorage.getItem(ADMIN_CONSOLE_SESSION_KEY) ||
+      localStorage.getItem(ADMIN_CONSOLE_SESSION_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { verified?: boolean; expiresAt?: number };
+    if (!parsed?.verified) return false;
+    if (parsed.expiresAt && Date.now() > parsed.expiresAt) {
+      sessionStorage.removeItem(ADMIN_CONSOLE_SESSION_KEY);
+      localStorage.removeItem(ADMIN_CONSOLE_SESSION_KEY);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function setStoredAdminConsoleSession(
+  verified: boolean,
+  uid?: string,
+  email?: string
+): void {
+  try {
+    if (verified) {
+      const payload = JSON.stringify({
+        verified: true,
+        uid: uid || '',
+        email: email || '',
+        verifiedAt: Date.now(),
+        expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+      });
+      sessionStorage.setItem(ADMIN_CONSOLE_SESSION_KEY, payload);
+      localStorage.setItem(ADMIN_CONSOLE_SESSION_KEY, payload);
+    } else {
+      sessionStorage.removeItem(ADMIN_CONSOLE_SESSION_KEY);
+      localStorage.removeItem(ADMIN_CONSOLE_SESSION_KEY);
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export async function fetchUserProfileByUid(uid: string): Promise<UserProfile | null> {
+  const safeUid = sanitizeId(uid);
+  const path = `users/${safeUid}`;
+  try {
+    const snap = await getDoc(doc(db, 'users', safeUid));
+    if (!snap.exists()) return null;
+    return snap.data() as UserProfile;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+  }
+}
+
 export async function checkIsAdminUser(user: User | AppUserSession | null): Promise<boolean> {
+  if (hasStoredAdminConsoleSession()) {
+    return true;
+  }
   if (!user) return false;
   if (user.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase()) {
     return true;

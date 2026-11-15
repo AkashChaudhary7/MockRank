@@ -12,6 +12,7 @@ import {
 } from 'firebase/auth';
 import {
   ArrowRight,
+  BarChart3,
   BookOpen,
   Calendar,
   Check,
@@ -30,6 +31,7 @@ import {
   Sun,
   Trophy,
   UserCheck,
+  X,
 } from 'lucide-react';
 import {
   AppUserSession,
@@ -42,6 +44,7 @@ import {
   saveCustomDomainUserSession,
 } from './lib/firebase';
 import {
+  DEFAULT_SECTIONS_CLIENT,
   evaluateExamAttemptSafe,
   fetchExamPaperSafe,
   fetchTimeAndConfigSafe,
@@ -55,8 +58,11 @@ import {
   fetchChallengeConfig,
   fetchMockPaperSingleReadCached,
   fetchUserAttempts,
+  fetchUserProfileByUid,
   finalizeExamSubmissionAndSyncLeaderboards,
+  hasStoredAdminConsoleSession,
   saveCandidateUsername,
+  setStoredAdminConsoleSession,
   sortAndRankEqualMocksCohort,
   subscribeToMockLeaderboard,
   subscribeToOverallLeaderboard,
@@ -80,6 +86,15 @@ import { AdminPanel } from './components/AdminPanel';
 import { LegalModal } from './components/LegalModal';
 
 type StudentNavTab = 'dashboard' | 'mocks' | 'leaderboard' | 'mistake-vault' | 'result';
+
+interface AdminInspectedUserState {
+  uid: string;
+  candidateName: string;
+  profile: UserProfile | null;
+  completedAttempts: ExamAttempt[];
+  cohortRank: number | null;
+  overallAverageScore: number;
+}
 
 interface ActiveExamSession {
   mockId: string;
@@ -164,7 +179,7 @@ export default function App() {
   );
   const [authReady, setAuthReady] = useState<boolean>(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => hasStoredAdminConsoleSession());
   const [authBusy, setAuthBusy] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -179,7 +194,7 @@ export default function App() {
   const [pendingMockAfterUsername, setPendingMockAfterUsername] =
     useState<MockBlueprint | null>(null);
 
-  // Primary Full-Page Navigation (Dashboard | Mocks | Full-Page Leaderboard | Full-Page Result)
+  // Primary Full-Page Navigation (Dashboard | Mocks | Full-Page Leaderboard | Mistake Vault | Full-Page Result)
   const [activeNav, setActiveNav] = useState<StudentNavTab>(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('mock') ? 'mocks' : 'dashboard';
@@ -210,9 +225,13 @@ export default function App() {
     []
   );
 
-  // Active CBT Session, Dedicated Result Page State & Modals
+  // Active CBT Session, Dedicated Result Page State, Admin Whole-Scorecard Inspector & Modals
   const [activeExam, setActiveExam] = useState<ActiveExamSession | null>(null);
   const [viewingResultAttempt, setViewingResultAttempt] = useState<ExamAttempt | null>(null);
+  const [adminInspectedUser, setAdminInspectedUser] = useState<AdminInspectedUserState | null>(
+    null
+  );
+  const [inspectingUid, setInspectingUid] = useState<string | null>(null);
   const [showAdminModal, setShowAdminModal] = useState<boolean>(false);
   const [showLegalModal, setShowLegalModal] = useState<boolean>(false);
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
@@ -296,7 +315,7 @@ export default function App() {
 
       if (!effectiveUser) {
         setUserProfile(null);
-        setIsAdmin(false);
+        setIsAdmin(hasStoredAdminConsoleSession());
         setUserAttempts([]);
         return;
       }
@@ -487,6 +506,7 @@ export default function App() {
 
   // Open Dedicated Result & Analysis Page (Full Page)
   const openResultPage = useCallback((attempt: ExamAttempt) => {
+    setAdminInspectedUser(null);
     setViewingResultAttempt(attempt);
     setActiveNav('result');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -494,10 +514,144 @@ export default function App() {
 
   // Open Dedicated Leaderboard Page (Full Page, Not Popup)
   const openLeaderboardPage = useCallback((scope = 'overall') => {
+    setAdminInspectedUser(null);
     setLeaderboardScope(scope);
     setActiveNav('leaderboard');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
+
+  // Admin Whole-Scorecard Inspector: Open any candidate's complete Scorecard (all attempted mocks + solutions)
+  const openAdminUserScorecard = useCallback(
+    async (targetUid: string, targetCandidateName: string, preferredMockId?: string) => {
+      if (!isAdmin && !hasStoredAdminConsoleSession()) {
+        setBannerMessage('Administrator authentication is required to inspect other candidates.');
+        return;
+      }
+      setInspectingUid(targetUid);
+      setBannerMessage(null);
+      try {
+        const [profile, attempts] = await Promise.all([
+          fetchUserProfileByUid(targetUid),
+          fetchUserAttempts(targetUid),
+        ]);
+
+        const allCompleted = attempts.filter((a) => a.status === 'completed');
+        const activeCompleted = allCompleted.filter((a) => activeMockIdsSet.has(a.mockId));
+        const completed = activeCompleted.length > 0 ? activeCompleted : allCompleted;
+
+        if (completed.length === 0) {
+          setBannerMessage(
+            `${targetCandidateName || targetUid} has not completed any mock tests yet.`
+          );
+          return;
+        }
+
+        const preferredAttempt = preferredMockId
+          ? completed.find((a) => a.mockId === preferredMockId)
+          : undefined;
+        const selectedAttempt = preferredAttempt || completed[completed.length - 1];
+
+        const cohortList = sortAndRankEqualMocksCohort(
+          overallLeaderboard,
+          Math.max(1, completed.length)
+        );
+        const cohortRank = cohortList.find((e) => e.uid === targetUid)?.rank || null;
+        const avgScore = Number(
+          (
+            completed.reduce((acc, a) => acc + Number(a.score || 0), 0) / completed.length
+          ).toFixed(2)
+        );
+
+        const resolvedName =
+          targetCandidateName ||
+          (profile?.username ? `@${profile.username}` : profile?.fullName || targetUid);
+
+        setAdminInspectedUser({
+          uid: targetUid,
+          candidateName: resolvedName,
+          profile,
+          completedAttempts: completed,
+          cohortRank,
+          overallAverageScore: avgScore,
+        });
+        setViewingResultAttempt(selectedAttempt);
+        setActiveNav('result');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch (err) {
+        setBannerMessage(
+          err instanceof Error ? err.message : 'Failed to load candidate whole scorecard.'
+        );
+      } finally {
+        setInspectingUid(null);
+      }
+    },
+    [activeMockIdsSet, isAdmin, overallLeaderboard]
+  );
+
+  // Admin: Open any candidate's attempted mock in read-only Mock Screen Solutions view
+  const openInspectedAttemptSolutionsInMockScreen = useCallback(
+    async (attempt: ExamAttempt) => {
+      const matchedBp = blueprints.find((b) => b.mockId === attempt.mockId);
+      const resolvedBp: MockBlueprint = matchedBp || {
+        mockId: attempt.mockId,
+        dayNumber: attempt.dayNumber || 1,
+        title: `DSSSB Mock - ${attempt.mockId}`,
+        category: 'DSSSB TGT Computer Science',
+        enabled: true,
+        unlockDateIST: challengeConfig.startDateIST,
+        durationMinutes: 120,
+        totalQuestions: 200,
+        correctMarks: 1,
+        incorrectMarks: -0.25,
+        unattemptedMarks: 0,
+        maxMarks: 200,
+        answerReleasePolicy: 'after-submission',
+        sections: DEFAULT_SECTIONS_CLIENT,
+      };
+      setStartingMockId(attempt.mockId);
+      try {
+        const syncedPaper = await fetchMockPaperSingleReadCached(attempt.mockId, false);
+        const paperData = await fetchExamPaperSafe({
+          dayNumber: resolvedBp.dayNumber,
+          startDateIST: challengeConfig.startDateIST,
+          isPaused: challengeConfig.isPaused,
+          blueprintOverride: resolvedBp,
+          syncedQuestions: syncedPaper?.questions,
+          isAdminPreview: true,
+        });
+
+        const finalQuestions: PublicQuestion[] =
+          syncedPaper && syncedPaper.questions.length > 0
+            ? syncedPaper.questions
+            : paperData.questions;
+        const finalTitle =
+          syncedPaper?.paperDoc?.title || paperData.title || resolvedBp.title;
+
+        setActiveExam({
+          mockId: attempt.mockId,
+          dayNumber: attempt.dayNumber,
+          title: finalTitle,
+          durationMinutes: resolvedBp.durationMinutes || paperData.durationMinutes,
+          correctMarks: resolvedBp.correctMarks || paperData.correctMarks,
+          incorrectMarks: resolvedBp.incorrectMarks ?? paperData.incorrectMarks,
+          maxMarks: Number((finalQuestions.length * (resolvedBp.correctMarks || 1)).toFixed(2)),
+          sections: paperData.sections,
+          questions: finalQuestions,
+          attempt,
+          mode: 'solutions',
+          blueprint: resolvedBp,
+          isCustomUploadedPaper: Boolean(syncedPaper && syncedPaper.questions.length > 0),
+        });
+      } catch (err) {
+        setBannerMessage(
+          err instanceof Error ? err.message : 'Failed to open candidate mock solutions screen.'
+        );
+      } finally {
+        setStartingMockId(null);
+      }
+    },
+    [blueprints, challengeConfig.isPaused, challengeConfig.startDateIST]
+  );
 
   // Share Mock Test or Mock Score in Text Format with Link Below to Attempt It
   const handleShareMockOrScoreText = async (
@@ -647,9 +801,10 @@ export default function App() {
     }
   };
 
-  // Sign Out Handler (Clears both Firebase Auth and Custom Domain session)
+  // Sign Out Handler (Clears Firebase Auth, Custom Domain session, and Admin Console Rights)
   const handleSignOut = async () => {
     clearCustomDomainUserSession();
+    setStoredAdminConsoleSession(false);
     try {
       await signOut(auth);
     } catch {
@@ -658,6 +813,7 @@ export default function App() {
     setFirebaseUser(null);
     setUserProfile(null);
     setIsAdmin(false);
+    setAdminInspectedUser(null);
     setUserAttempts([]);
   };
 
@@ -877,8 +1033,16 @@ export default function App() {
         mockId={activeExam.mockId}
         dayNumber={activeExam.dayNumber}
         title={activeExam.title}
-        candidateName={userProfile?.username || userProfile?.fullName || 'Candidate'}
-        candidateEmail={userProfile?.email || 'candidate@mockrank.in'}
+        candidateName={
+          adminInspectedUser
+            ? adminInspectedUser.candidateName
+            : userProfile?.username || userProfile?.fullName || 'Candidate'
+        }
+        candidateEmail={
+          adminInspectedUser
+            ? adminInspectedUser.profile?.email || 'candidate@mockrank.in'
+            : userProfile?.email || 'candidate@mockrank.in'
+        }
         durationMinutes={activeExam.durationMinutes}
         correctMarks={activeExam.correctMarks}
         incorrectMarks={activeExam.incorrectMarks}
@@ -888,14 +1052,18 @@ export default function App() {
         initialMode={activeExam.mode || 'exam'}
         darkMode={darkMode}
         onToggleDarkMode={() => setDarkMode((d) => !d)}
-        onReattemptMock={async () => {
-          const bp =
-            activeExam.blueprint ||
-            blueprints.find((b) => b.mockId === activeExam.mockId);
-          if (bp) {
-            await handleStartMock(bp, { forceReattempt: true, mode: 'exam' });
-          }
-        }}
+        onReattemptMock={
+          adminInspectedUser
+            ? undefined
+            : async () => {
+                const bp =
+                  activeExam.blueprint ||
+                  blueprints.find((b) => b.mockId === activeExam.mockId);
+                if (bp) {
+                  await handleStartMock(bp, { forceReattempt: true, mode: 'exam' });
+                }
+              }
+        }
         onAutosave={handleExamAutosave}
         onSubmitFinal={handleExamFinalSubmit}
         onExitWithoutSubmit={() => {
@@ -916,6 +1084,7 @@ export default function App() {
             href="#top"
             onClick={(e) => {
               e.preventDefault();
+              setAdminInspectedUser(null);
               setActiveNav('dashboard');
             }}
             className="text-lg sm:text-xl font-bold tracking-tight text-slate-950 dark:text-white font-display whitespace-nowrap shrink-0"
@@ -927,7 +1096,10 @@ export default function App() {
           <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600 dark:text-slate-400">
             <button
               type="button"
-              onClick={() => setActiveNav('dashboard')}
+              onClick={() => {
+                setAdminInspectedUser(null);
+                setActiveNav('dashboard');
+              }}
               className={`py-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 activeNav === 'dashboard'
                   ? 'text-slate-950 dark:text-white font-semibold border-b-2 border-slate-900 dark:border-white'
@@ -938,7 +1110,10 @@ export default function App() {
             </button>
             <button
               type="button"
-              onClick={() => setActiveNav('mocks')}
+              onClick={() => {
+                setAdminInspectedUser(null);
+                setActiveNav('mocks');
+              }}
               className={`py-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 activeNav === 'mocks'
                   ? 'text-slate-950 dark:text-white font-semibold border-b-2 border-slate-900 dark:border-white'
@@ -961,6 +1136,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => {
+                setAdminInspectedUser(null);
                 setActiveNav('mistake-vault');
                 window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
@@ -974,8 +1150,19 @@ export default function App() {
             </button>
           </nav>
 
-          {/* Zone 3: Dark Mode Toggle & Primary Action */}
+          {/* Zone 3: Admin Rights Indicator, Dark Mode Toggle & Primary Action */}
           <div className="flex items-center gap-2 shrink-0">
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setShowAdminModal(true)}
+                title="Admin Rights Active — Click to reopen Admin Console"
+                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold text-emerald-900 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/70 hover:bg-emerald-100 dark:hover:bg-emerald-900 border border-emerald-300 dark:border-emerald-700 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <Shield className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Admin Active</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setDarkMode((prev) => !prev)}
@@ -1003,7 +1190,10 @@ export default function App() {
             {firebaseUser ? (
               <button
                 type="button"
-                onClick={() => setActiveNav('mocks')}
+                onClick={() => {
+                  setAdminInspectedUser(null);
+                  setActiveNav('mocks');
+                }}
                 className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs font-semibold text-white dark:text-slate-950 bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-slate-200 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 Attempt Mocks
@@ -1025,7 +1215,10 @@ export default function App() {
         <nav className="md:hidden grid grid-cols-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 text-[11px] font-medium text-slate-600 dark:text-slate-400">
           <button
             type="button"
-            onClick={() => setActiveNav('dashboard')}
+            onClick={() => {
+              setAdminInspectedUser(null);
+              setActiveNav('dashboard');
+            }}
             className={`py-2.5 text-center transition-colors cursor-pointer ${
               activeNav === 'dashboard'
                 ? 'text-slate-950 dark:text-white font-bold border-b-2 border-slate-900 dark:border-white bg-white dark:bg-slate-900'
@@ -1036,7 +1229,10 @@ export default function App() {
           </button>
           <button
             type="button"
-            onClick={() => setActiveNav('mocks')}
+            onClick={() => {
+              setAdminInspectedUser(null);
+              setActiveNav('mocks');
+            }}
             className={`py-2.5 text-center transition-colors border-x border-slate-200/70 dark:border-slate-800/70 cursor-pointer ${
               activeNav === 'mocks'
                 ? 'text-slate-950 dark:text-white font-bold border-b-2 border-b-slate-900 dark:border-b-white bg-white dark:bg-slate-900'
@@ -1059,6 +1255,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => {
+              setAdminInspectedUser(null);
               setActiveNav('mistake-vault');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
@@ -1209,46 +1406,177 @@ export default function App() {
             </div>
           </div>
         ) : activeNav === 'result' && viewingResultAttempt ? (
-          /* Dedicated Full-Page View for Mock Score & Performance Analysis */
-          <MockResultModal
-            attempt={viewingResultAttempt}
-            candidateName={
-              userProfile?.username ? `@${userProfile.username}` : userProfile?.fullName
-            }
-            mockTitle={
-              blueprints.find((b) => b.mockId === viewingResultAttempt.mockId)?.title ||
-              `DSSSB Mock - ${viewingResultAttempt.mockId}`
-            }
-            maxMarks={
-              blueprints.find((b) => b.mockId === viewingResultAttempt.mockId)?.maxMarks || 200
-            }
-            answerReleasePolicy={
-              challengeConfig.delayedAnswerRelease
-                ? 'after-challenge'
-                : blueprints.find((b) => b.mockId === viewingResultAttempt.mockId)
-                    ?.answerReleasePolicy || 'after-submission'
-            }
-            startDateIST={challengeConfig.startDateIST}
-            isAdmin={isAdmin}
-            mockLeaderboard={selectedMockLeaderboard}
-            overallAverageScore={userProfile?.averageScore || viewingResultAttempt.score}
-            overallRank={myEqualCohortRank}
-            onBackToMocks={() => setActiveNav('mocks')}
-            onBackToDashboard={() => setActiveNav('dashboard')}
-            onOpenLeaderboard={(mockId) => openLeaderboardPage(mockId)}
-            onReattemptMock={() => {
-              const bp = blueprints.find((b) => b.mockId === viewingResultAttempt.mockId);
-              if (bp) {
-                handleStartMock(bp, { forceReattempt: true, mode: 'exam' });
+          /* Dedicated Full-Page View for Mock Score & Performance Analysis (Own or Admin-Inspected Candidate) */
+          <div className="space-y-6">
+            {adminInspectedUser && (
+              <div className="p-4 sm:p-5 rounded-xl border-2 border-emerald-500/70 dark:border-emerald-600/80 bg-emerald-50/60 dark:bg-emerald-950/30 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-emerald-800 dark:text-emerald-300">
+                      <Shield className="w-3.5 h-3.5" />
+                      <span>ADMIN WHOLE SCORECARD INSPECTOR</span>
+                    </div>
+                    <h2 className="text-base sm:text-xl font-bold text-slate-950 dark:text-white">
+                      {adminInspectedUser.candidateName}
+                      {adminInspectedUser.profile?.email && (
+                        <span className="ml-2 text-xs font-mono font-normal text-slate-600 dark:text-slate-400">
+                          ({adminInspectedUser.profile.email})
+                        </span>
+                      )}
+                    </h2>
+                    <div className="flex flex-wrap items-center gap-3 text-xs font-mono text-slate-700 dark:text-slate-300">
+                      <span>
+                        Overall Avg:{' '}
+                        <strong>{adminInspectedUser.overallAverageScore.toFixed(2)}</strong>
+                      </span>
+                      <span>
+                        Part A Avg:{' '}
+                        <strong>
+                          {(adminInspectedUser.profile?.partAAverageScore ?? 0).toFixed(2)}
+                        </strong>
+                      </span>
+                      <span>
+                        Part B Avg:{' '}
+                        <strong>
+                          {(adminInspectedUser.profile?.partBAverageScore ?? 0).toFixed(2)}
+                        </strong>
+                      </span>
+                      <span>
+                        Completed Mocks:{' '}
+                        <strong>{adminInspectedUser.completedAttempts.length}</strong>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openLeaderboardPage('overall')}
+                      className="px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+                    >
+                      Back to Leaderboard
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAdminModal(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg cursor-pointer"
+                    >
+                      <Shield className="w-3.5 h-3.5" />
+                      <span>Admin Console</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAdminInspectedUser(null);
+                        setViewingResultAttempt(null);
+                        setActiveNav('dashboard');
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white border border-slate-300 dark:border-slate-700 rounded-lg cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      <span>Exit Inspector</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Switch between all Mocks attempted by this Candidate */}
+                <div className="pt-3 border-t border-emerald-200/80 dark:border-emerald-900/60 space-y-2">
+                  <div className="text-[11px] font-semibold text-emerald-900 dark:text-emerald-300 uppercase tracking-wide">
+                    Select Mock Attempt to Inspect Complete Scorecard (
+                    {adminInspectedUser.completedAttempts.length} Attempted):
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {adminInspectedUser.completedAttempts.map((att) => {
+                      const bpTitle =
+                        blueprints.find((b) => b.mockId === att.mockId)?.title || att.mockId;
+                      const isCurrent = att.attemptId === viewingResultAttempt.attemptId;
+                      return (
+                        <button
+                          key={att.attemptId}
+                          type="button"
+                          onClick={() => setViewingResultAttempt(att)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                            isCurrent
+                              ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-950 border-slate-900 dark:border-white'
+                              : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          {bpTitle} ·{' '}
+                          <span className="font-mono font-bold">{att.score.toFixed(2)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <MockResultModal
+              attempt={viewingResultAttempt}
+              candidateName={
+                adminInspectedUser
+                  ? adminInspectedUser.candidateName
+                  : userProfile?.username
+                  ? `@${userProfile.username}`
+                  : userProfile?.fullName
               }
-            }}
-            onOpenMockSolutionsScreen={() => {
-              const bp = blueprints.find((b) => b.mockId === viewingResultAttempt.mockId);
-              if (bp) {
-                handleStartMock(bp, { mode: 'solutions' });
+              mockTitle={
+                blueprints.find((b) => b.mockId === viewingResultAttempt.mockId)?.title ||
+                `DSSSB Mock - ${viewingResultAttempt.mockId}`
               }
-            }}
-          />
+              maxMarks={
+                blueprints.find((b) => b.mockId === viewingResultAttempt.mockId)?.maxMarks || 200
+              }
+              answerReleasePolicy={
+                challengeConfig.delayedAnswerRelease
+                  ? 'after-challenge'
+                  : blueprints.find((b) => b.mockId === viewingResultAttempt.mockId)
+                      ?.answerReleasePolicy || 'after-submission'
+              }
+              startDateIST={challengeConfig.startDateIST}
+              isAdmin={isAdmin}
+              mockLeaderboard={selectedMockLeaderboard}
+              overallAverageScore={
+                adminInspectedUser
+                  ? adminInspectedUser.overallAverageScore
+                  : userProfile?.averageScore || viewingResultAttempt.score
+              }
+              overallRank={
+                adminInspectedUser ? adminInspectedUser.cohortRank : myEqualCohortRank
+              }
+              onBackToMocks={() => {
+                setAdminInspectedUser(null);
+                setActiveNav('mocks');
+              }}
+              onBackToDashboard={() => {
+                setAdminInspectedUser(null);
+                setActiveNav('dashboard');
+              }}
+              onOpenLeaderboard={(mockId) => openLeaderboardPage(mockId)}
+              onReattemptMock={
+                adminInspectedUser
+                  ? undefined
+                  : () => {
+                      const bp = blueprints.find(
+                        (b) => b.mockId === viewingResultAttempt.mockId
+                      );
+                      if (bp) {
+                        handleStartMock(bp, { forceReattempt: true, mode: 'exam' });
+                      }
+                    }
+              }
+              onOpenMockSolutionsScreen={() => {
+                if (adminInspectedUser) {
+                  openInspectedAttemptSolutionsInMockScreen(viewingResultAttempt);
+                } else {
+                  const bp = blueprints.find((b) => b.mockId === viewingResultAttempt.mockId);
+                  if (bp) {
+                    handleStartMock(bp, { mode: 'solutions' });
+                  }
+                }
+              }}
+            />
+          </div>
         ) : activeNav === 'leaderboard' ? (
           /* Dedicated Full-Page View for Leaderboard (Not Popup Mode) */
           <LeaderboardModal
@@ -1257,9 +1585,18 @@ export default function App() {
             initialScope={leaderboardScope}
             overallEntries={overallLeaderboard}
             blueprints={blueprints}
+            isAdmin={isAdmin}
+            inspectingUid={inspectingUid}
+            onInspectUserScorecard={openAdminUserScorecard}
             onRefreshOverall={() => setLeaderboardRefreshNonce((n) => n + 1)}
-            onBackToDashboard={() => setActiveNav('dashboard')}
-            onBackToMocks={() => setActiveNav('mocks')}
+            onBackToDashboard={() => {
+              setAdminInspectedUser(null);
+              setActiveNav('dashboard');
+            }}
+            onBackToMocks={() => {
+              setAdminInspectedUser(null);
+              setActiveNav('mocks');
+            }}
           />
         ) : activeNav === 'mistake-vault' ? (
           /* Dedicated Full-Page View for Mistake Vault (Beside Leaderboard) */
@@ -1514,11 +1851,44 @@ export default function App() {
                                   #{entry.rank}
                                 </td>
                                 <td className="py-2.5 sm:py-3 px-3 sm:px-4 whitespace-nowrap">
-                                  {entry.candidateName}
-                                  {isMe ? ' (You)' : ''}
+                                  {isAdmin ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        openAdminUserScorecard(entry.uid, entry.candidateName)
+                                      }
+                                      className="font-semibold hover:underline text-left cursor-pointer"
+                                    >
+                                      {entry.candidateName}
+                                      {isMe ? ' (You)' : ''}
+                                    </button>
+                                  ) : (
+                                    <>
+                                      {entry.candidateName}
+                                      {isMe ? ' (You)' : ''}
+                                    </>
+                                  )}
                                 </td>
                                 <td className="py-2.5 sm:py-3 px-3 sm:px-4 text-right font-mono font-bold whitespace-nowrap">
-                                  {entry.averageScore.toFixed(2)}
+                                  {isAdmin ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        openAdminUserScorecard(entry.uid, entry.candidateName)
+                                      }
+                                      title="Click to inspect whole scorecard"
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800 underline decoration-dotted cursor-pointer"
+                                    >
+                                      <span>
+                                        {inspectingUid === entry.uid
+                                          ? 'Loading...'
+                                          : entry.averageScore.toFixed(2)}
+                                      </span>
+                                      <BarChart3 className="w-3 h-3" />
+                                    </button>
+                                  ) : (
+                                    entry.averageScore.toFixed(2)
+                                  )}
                                 </td>
                                 <td className="py-2.5 sm:py-3 px-3 sm:px-4 text-right font-mono whitespace-nowrap">
                                   {(entry.partAAverageScore || 0).toFixed(2)}
@@ -1942,10 +2312,14 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setShowAdminModal(true)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg cursor-pointer"
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg cursor-pointer border ${
+                  isAdmin
+                    ? 'text-emerald-900 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900 border-emerald-300 dark:border-emerald-700'
+                    : 'text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-300 dark:border-slate-700'
+                }`}
               >
                 <Shield className="w-3.5 h-3.5" />
-                <span>Admin Login</span>
+                <span>{isAdmin ? 'Admin Console (Rights Active)' : 'Admin Login'}</span>
               </button>
             </div>
           </div>
@@ -2009,8 +2383,20 @@ export default function App() {
         <AdminPanel
           adminUid={firebaseUser?.uid || 'efekfmXxEpYHwikLupJcZZijDvx1'}
           adminEmail={firebaseUser?.email || 'ictlabgsssaidana@gmail.com'}
+          isAdminActive={isAdmin}
           challengeConfig={challengeConfig}
           blueprints={blueprints}
+          onAdminAuthenticated={() => {
+            setIsAdmin(true);
+            setBannerMessage(
+              'Admin Rights Activated — Even after closing the Admin Console, you can click any candidate score on the Dashboard or Leaderboard to view their whole scorecard.'
+            );
+          }}
+          onAdminRevoked={() => {
+            setIsAdmin(false);
+            setAdminInspectedUser(null);
+          }}
+          onInspectUserScorecard={openAdminUserScorecard}
           onConfigUpdated={reloadUserData}
           onClose={() => setShowAdminModal(false)}
         />
