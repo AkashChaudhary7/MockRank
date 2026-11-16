@@ -26,6 +26,7 @@ import {
   SectionBlueprint,
   SubjectSlug,
 } from '../types/mockrank';
+import { resolveSectionTimeMap } from '../lib/clientExamEngine';
 
 interface ExamTerminalModalProps {
   mockId: string;
@@ -52,7 +53,8 @@ interface ExamTerminalModalProps {
     responses: Record<string, number>,
     markedForReview: string[],
     timeTakenSeconds: number,
-    autoSubmitReason?: string
+    autoSubmitReason?: string,
+    sectionTimeSeconds?: Partial<Record<SubjectSlug, number>>
   ) => Promise<void>;
   onExitWithoutSubmit: () => void;
 }
@@ -211,12 +213,12 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
   );
   const isSolutionsMode = terminalMode === 'solutions';
 
-  const [instructionsAccepted, setInstructionsAccepted] = useState<boolean>(
-    isSolutionsMode ||
-      Object.keys(attempt.responses || {}).length > 0 ||
-      (attempt.timeTakenSeconds || 0) > 10
-  );
-  const [declarationChecked, setDeclarationChecked] = useState<boolean>(false);
+  const hasSavedProgress =
+    Object.keys(attempt.responses || {}).length > 0 || (attempt.timeTakenSeconds || 0) > 10;
+
+  // Always show the Fullscreen Gate before starting/resuming a live exam so browser Fullscreen + Keyboard Lock engage cleanly
+  const [instructionsAccepted, setInstructionsAccepted] = useState<boolean>(isSolutionsMode);
+  const [declarationChecked, setDeclarationChecked] = useState<boolean>(hasSavedProgress);
 
   // Standard Testbook/CBT Typography Scale ('standard' by default across devices; user can toggle A- / A / A+)
   const [uiScale, setUiScale] = useState<MockUiScale>('standard');
@@ -295,10 +297,16 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
     return init;
   });
 
+  // Per-subject elapsed time tracking (in seconds) across all 7 DSSSB subjects
+  const [sectionTimes, setSectionTimes] = useState<Record<SubjectSlug, number>>(() =>
+    resolveSectionTimeMap(attempt.timeTakenSeconds || 0, attempt.sectionScores)
+  );
+
   // Sync responses if attempt prop changes (e.g., when user clicks Reattempt Paper)
   useEffect(() => {
     setResponses({ ...(attempt.responses || {}) });
     setMarkedForReview(new Set(attempt.markedForReview || []));
+    setSectionTimes(resolveSectionTimeMap(attempt.timeTakenSeconds || 0, attempt.sectionScores));
     if (attempt.status === 'in-progress' && initialMode !== 'solutions') {
       setTerminalMode('exam');
       setShowSolutionInMockScreen(false);
@@ -307,7 +315,15 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
       const firstIdx = orderedSections[0]?.questionIndices[0] ?? 0;
       setCurrentIndex(firstIdx);
     }
-  }, [attempt.attemptId, attempt.startedAt, attempt.status, initialMode, orderedSections]);
+  }, [
+    attempt.attemptId,
+    attempt.sectionScores,
+    attempt.startedAt,
+    attempt.status,
+    attempt.timeTakenSeconds,
+    initialMode,
+    orderedSections,
+  ]);
 
   // Authoritative remaining timer derived from attempt.expiresAt
   const computeRemainingSeconds = useCallback(() => {
@@ -331,10 +347,16 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
   const responsesRef = useRef(responses);
   const reviewRef = useRef(markedForReview);
   const remainingRef = useRef(remainingSeconds);
+  const sectionTimesRef = useRef(sectionTimes);
+  const currentSubjectRef = useRef<SubjectSlug>(
+    currentSection?.subject || 'general-awareness'
+  );
 
   responsesRef.current = responses;
   reviewRef.current = markedForReview;
   remainingRef.current = remainingSeconds;
+  sectionTimesRef.current = sectionTimes;
+  currentSubjectRef.current = currentSection?.subject || 'general-awareness';
 
   const currentQuestion = questions[currentIndex];
 
@@ -371,13 +393,16 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
         if (Array.isArray(parsed.markedForReview)) {
           setMarkedForReview(new Set(parsed.markedForReview));
         }
+        if (parsed.sectionTimes && typeof parsed.sectionTimes === 'object') {
+          setSectionTimes((prev) => ({ ...prev, ...parsed.sectionTimes }));
+        }
       }
     } catch {
       // Ignore local storage errors
     }
   }, [isSolutionsMode, localBackupKey]);
 
-  // Save to localStorage on every response or review update
+  // Save to localStorage on every response, review, or sectionTime update
   useEffect(() => {
     if (!instructionsAccepted || isSolutionsMode) return;
     try {
@@ -386,13 +411,35 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
         JSON.stringify({
           responses,
           markedForReview: Array.from(markedForReview),
+          sectionTimes,
           updatedAt: Date.now(),
         })
       );
     } catch {
       // Ignore quota errors
     }
-  }, [responses, markedForReview, instructionsAccepted, isSolutionsMode, localBackupKey]);
+  }, [
+    responses,
+    markedForReview,
+    sectionTimes,
+    instructionsAccepted,
+    isSolutionsMode,
+    localBackupKey,
+  ]);
+
+  const unlockBrowserKeyboardAndExitFullscreen = () => {
+    try {
+      const navWithKb = navigator as unknown as {
+        keyboard?: { unlock?: () => void };
+      };
+      navWithKb.keyboard?.unlock?.();
+    } catch {
+      // Ignore keyboard unlock error
+    }
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
 
   const triggerFinalSubmit = useCallback(
     async (autoReason?: string) => {
@@ -401,7 +448,15 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
       setSubmitting(true);
 
       const totalAllocated = durationMinutes * 60;
-      const timeTaken = Math.max(1, totalAllocated - remainingRef.current);
+      const sumSectionSec = (Object.values(sectionTimesRef.current) as number[]).reduce(
+        (acc, v) => acc + Number(v || 0),
+        0
+      );
+      const timeTaken = Math.max(
+        1,
+        sumSectionSec,
+        totalAllocated - remainingRef.current
+      );
 
       try {
         localStorage.removeItem(localBackupKey);
@@ -409,21 +464,20 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
         // Ignore
       }
 
-      if (document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {});
-      }
+      unlockBrowserKeyboardAndExitFullscreen();
 
       await onSubmitFinal(
         responsesRef.current,
         Array.from(reviewRef.current),
         timeTaken,
-        autoReason
+        autoReason,
+        sectionTimesRef.current
       );
     },
     [durationMinutes, isSolutionsMode, localBackupKey, onSubmitFinal]
   );
 
-  // 1-second authoritative exam countdown + Testbook-style elapsed question timer (NO 1-minute auto-submit)
+  // 1-second authoritative exam countdown + per-question & per-subject elapsed timers
   useEffect(() => {
     if (!instructionsAccepted || submittedRef.current || isSolutionsMode) return;
 
@@ -437,6 +491,11 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
       }
 
       setQuestionSeconds((prevSec) => prevSec + 1);
+      const activeSubj = currentSubjectRef.current;
+      setSectionTimes((prevMap) => ({
+        ...prevMap,
+        [activeSubj]: (prevMap[activeSubj] || 0) + 1,
+      }));
     }, 1000);
 
     return () => window.clearInterval(timer);
@@ -448,7 +507,15 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
 
     const interval = window.setInterval(async () => {
       const totalAllocated = durationMinutes * 60;
-      const timeTaken = Math.max(1, totalAllocated - remainingRef.current);
+      const sumSectionSec = (Object.values(sectionTimesRef.current) as number[]).reduce(
+        (acc, v) => acc + Number(v || 0),
+        0
+      );
+      const timeTaken = Math.max(
+        1,
+        sumSectionSec,
+        totalAllocated - remainingRef.current
+      );
       try {
         await onAutosave(
           responsesRef.current,
@@ -463,40 +530,160 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
     return () => window.clearInterval(interval);
   }, [durationMinutes, instructionsAccepted, isSolutionsMode, onAutosave]);
 
-  // Anti-Cheating Rule during active exam mode: Resizing the mock screen is allowed, but tab switching auto-submits immediately
+  const requestExamFullscreen = useCallback(async () => {
+    try {
+      const docEl = document.documentElement as HTMLElement & {
+        webkitRequestFullscreen?: () => Promise<void>;
+      };
+      if (!document.fullscreenElement) {
+        if (docEl.requestFullscreen) {
+          await docEl.requestFullscreen({ navigationUI: 'hide' } as FullscreenOptions);
+        } else if (docEl.webkitRequestFullscreen) {
+          await docEl.webkitRequestFullscreen();
+        }
+      }
+      // Lock system/escape keys where supported by the browser (Chromium Keyboard Lock API)
+      const navWithKb = navigator as unknown as {
+        keyboard?: { lock?: (keys?: string[]) => Promise<void> };
+      };
+      if (navWithKb.keyboard?.lock) {
+        await navWithKb.keyboard.lock([
+          'Escape',
+          'F11',
+          'MetaLeft',
+          'MetaRight',
+          'AltLeft',
+          'AltRight',
+          'Tab',
+        ]);
+      }
+    } catch {
+      // Ignore if running inside a restricted preview frame
+    }
+  }, []);
+
+  // Strict Fullscreen Lock, Total Keyboard Disable, and Immediate Auto-Submit on Any Exit Attempt
   useEffect(() => {
     if (!instructionsAccepted || submittedRef.current || isSolutionsMode) return;
 
+    // Ensure fullscreen is requested immediately when exam becomes active
+    requestExamFullscreen();
+
+    let armFullscreenExitGuard = Boolean(document.fullscreenElement);
+    const guardTimer = window.setTimeout(() => {
+      if (document.fullscreenElement) {
+        armFullscreenExitGuard = true;
+      }
+    }, 700);
+
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const handleBlockAllKeys = (e: KeyboardEvent) => {
+      if (submittedRef.current) return;
+
+      // Disable ALL keyboard keys during active exam until submitted
+      e.preventDefault();
+      e.stopPropagation();
+
+      const key = e.key || '';
+      const code = e.code || '';
+
+      // If candidate presses Escape, F11, F12, F5, Alt, Meta, or Ctrl+W/R/Q trying to exit fullscreen or exam -> Auto-submit immediately
+      const isExitAttemptKey =
+        key === 'Escape' ||
+        code === 'Escape' ||
+        key === 'F11' ||
+        code === 'F11' ||
+        key === 'F12' ||
+        code === 'F12' ||
+        key === 'F5' ||
+        code === 'F5' ||
+        key === 'Meta' ||
+        key === 'OS' ||
+        e.metaKey ||
+        e.altKey ||
+        (e.ctrlKey &&
+          ['w', 'W', 'r', 'R', 'q', 'Q', 'n', 'N', 't', 'T', 'Tab'].includes(key));
+
+      if (isExitAttemptKey) {
+        triggerFinalSubmit(
+          `DSSSB Strict Proctoring Rule: Attempted to exit fullscreen or used restricted key (${
+            key || code || 'Shortcut'
+          }) during active examination. Exam auto-submitted immediately.`
+        );
+      }
+    };
+
+    const handleFullscreenChange = () => {
+      if (document.fullscreenElement) {
+        armFullscreenExitGuard = true;
+        return;
+      }
+      if (armFullscreenExitGuard && !submittedRef.current) {
+        triggerFinalSubmit(
+          'DSSSB Strict Proctoring Rule: Exited Fullscreen mode during active examination. Exam auto-submitted immediately.'
+        );
+      }
     };
 
     const handleVisibilityChange = () => {
       if (document.hidden && !submittedRef.current) {
         triggerFinalSubmit(
-          'DSSSB Anti-Cheating Rule: Tab switching or leaving the exam tab detected during active examination. Exam auto-submitted immediately.'
+          'DSSSB Strict Proctoring Rule: Tab switching or leaving the exam screen detected during active examination. Exam auto-submitted immediately.'
         );
       }
     };
 
-    document.addEventListener('contextmenu', handleContextMenu);
+    const handleWindowBlur = () => {
+      if (!submittedRef.current && document.hasFocus && !document.hasFocus()) {
+        triggerFinalSubmit(
+          'DSSSB Strict Proctoring Rule: Switched focus away from the locked exam screen. Exam auto-submitted immediately.'
+        );
+      }
+    };
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!submittedRef.current) {
+        triggerFinalSubmit(
+          'DSSSB Strict Proctoring Rule: Attempted to close or reload the exam window. Exam auto-submitted immediately.'
+        );
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('keydown', handleBlockAllKeys, { capture: true });
+    window.addEventListener('keyup', handleBlockAllKeys, { capture: true });
+    window.addEventListener('keypress', handleBlockAllKeys, { capture: true });
+    document.addEventListener('contextmenu', handleContextMenu, { capture: true });
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handleBeforeUnload);
 
     return () => {
-      document.removeEventListener('contextmenu', handleContextMenu);
+      window.clearTimeout(guardTimer);
+      window.removeEventListener('keydown', handleBlockAllKeys, { capture: true });
+      window.removeEventListener('keyup', handleBlockAllKeys, { capture: true });
+      window.removeEventListener('keypress', handleBlockAllKeys, { capture: true });
+      document.removeEventListener('contextmenu', handleContextMenu, { capture: true });
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handleBeforeUnload);
     };
-  }, [instructionsAccepted, isSolutionsMode, triggerFinalSubmit]);
+  }, [instructionsAccepted, isSolutionsMode, requestExamFullscreen, triggerFinalSubmit]);
 
-  const requestExamFullscreen = () => {
-    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-      document.documentElement.requestFullscreen().catch(() => {});
-    }
-  };
-
-  const handleStartExamSession = () => {
+  const handleStartExamSession = async () => {
     if (!declarationChecked) return;
-    requestExamFullscreen();
+    await requestExamFullscreen();
     setInstructionsAccepted(true);
   };
 
@@ -506,7 +693,9 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
     try {
       submittedRef.current = false;
       await onReattemptMock();
+      await requestExamFullscreen();
       setTerminalMode('exam');
+      setInstructionsAccepted(true);
       setShowSolutionInMockScreen(false);
       setLockedSections(new Set());
       setActiveSectionIndex(0);
@@ -514,6 +703,15 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
       setCurrentIndex(firstIdx);
       setResponses({});
       setMarkedForReview(new Set());
+      setSectionTimes({
+        'general-awareness': 0,
+        reasoning: 0,
+        mathematics: 0,
+        hindi: 0,
+        english: 0,
+        'computer-science': 0,
+        'teaching-methodology': 0,
+      });
     } finally {
       setReattemptBusy(false);
     }
@@ -809,10 +1007,16 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                 reference.
               </li>
               <li>
-                <strong>Screen Resizing Allowed, Tab Switching Strictly Prohibited:</strong> You
-                may freely resize the mock examination screen to fit your display, but switching
-                browser tabs or minimizing the exam tab during a live attempt will immediately
-                auto-submit your test.
+                <strong>Total Time &amp; Per-Subject Time Tracking:</strong> Both your overall test
+                time and the exact time spent in each of the 7 subjects are recorded and displayed
+                on your Scorecard and Dashboard.
+              </li>
+              <li>
+                <strong>Mandatory Locked Fullscreen &amp; Disabled Keyboard Keys:</strong> The mock
+                test runs in locked Fullscreen mode. All keyboard keys (including{' '}
+                <code>Esc</code>, <code>F11</code>, <code>Alt+Tab</code>, etc.) are disabled until
+                the exam is submitted. Attempting to exit Fullscreen, switch tabs, or leave the
+                exam screen by any method will immediately auto-submit your test.
               </li>
             </ul>
           </div>
@@ -827,8 +1031,8 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
               />
               <span className="text-xs sm:text-sm text-slate-800 dark:text-slate-200 leading-snug">
                 I have read and understood the standard CBT instructions, marking scheme (+
-                {correctMarks.toFixed(2)} / {incorrectMarks.toFixed(2)}), and sequential section
-                navigation rules.
+                {correctMarks.toFixed(2)} / {incorrectMarks.toFixed(2)}), mandatory locked
+                fullscreen rule, and auto-submit policy on any exit attempt.
               </span>
             </label>
           </div>
@@ -844,7 +1048,9 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                   : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed'
               }`}
             >
-              Start Mock Test →
+              {hasSavedProgress
+                ? 'Enter Locked Fullscreen & Resume Mock Test →'
+                : 'Enter Locked Fullscreen & Start Mock Test →'}
             </button>
           </div>
         </div>
@@ -930,8 +1136,25 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
 
           {!isSolutionsMode ? (
             <>
-              {/* Main Exam Countdown Clock */}
+              {/* Total Elapsed Time + Remaining Exam Countdown Clock */}
               <div
+                title="Total Elapsed Time in Mock"
+                className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded font-mono text-xs font-semibold bg-slate-900 text-emerald-300 border border-slate-700"
+              >
+                <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                <span>
+                  Total:{' '}
+                  {formatClock(
+                    (Object.values(sectionTimes) as number[]).reduce(
+                      (acc, v) => acc + Number(v || 0),
+                      0
+                    )
+                  )}
+                </span>
+              </div>
+
+              <div
+                title="Remaining Exam Time"
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded font-mono text-xs sm:text-sm font-bold border ${
                   remainingSeconds < 300
                     ? 'bg-red-950 text-red-200 border-red-800'
@@ -939,7 +1162,7 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                 }`}
               >
                 <Clock className="w-3.5 h-3.5 text-slate-400 hidden xs:inline" />
-                <span>{formatClock(remainingSeconds)}</span>
+                <span>Left: {formatClock(remainingSeconds)}</span>
               </div>
 
               {/* Submit Exam Button */}
@@ -954,14 +1177,20 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
               </button>
             </>
           ) : (
-            <button
-              type="button"
-              onClick={onExitWithoutSubmit}
-              className="flex items-center gap-1 px-3 py-1 sm:py-1.5 rounded text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition-colors cursor-pointer"
-            >
-              <X className="w-3.5 h-3.5" />
-              <span>Exit Solutions</span>
-            </button>
+            <>
+              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded font-mono text-xs font-semibold bg-slate-900 text-emerald-300 border border-slate-700">
+                <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Total Time: {formatClock(attempt.timeTakenSeconds || 0)}</span>
+              </div>
+              <button
+                type="button"
+                onClick={onExitWithoutSubmit}
+                className="flex items-center gap-1 px-3 py-1 sm:py-1.5 rounded text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition-colors cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Exit Solutions</span>
+              </button>
+            </>
           )}
         </div>
       </header>
@@ -986,13 +1215,14 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
         </div>
       )}
 
-      {/* Standard Testbook / DSSSB Section Tabs Bar */}
+      {/* Standard Testbook / DSSSB Section Tabs Bar (With Per-Subject Time Display) */}
       <div className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2.5 sm:px-4 py-1.5 flex items-center justify-between gap-2 shrink-0 shadow-2xs">
         <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
           {orderedSections.map((sec, idx) => {
             const isCurrentSection = idx === activeSectionIndex;
             const isLocked =
               !isSolutionsMode && (lockedSections.has(sec.subject) || idx < activeSectionIndex);
+            const secElapsedSec = sectionTimes[sec.subject] || 0;
 
             return (
               <button
@@ -1027,10 +1257,13 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                   <Lock className="w-3 h-3 opacity-70 shrink-0" />
                 )}
                 <span className="sm:hidden">
-                  {sec.shortLabel} ({sec.questionCount})
+                  {sec.shortLabel} ({sec.questionCount}) · {formatClock(secElapsedSec)}
                 </span>
                 <span className="hidden sm:inline">
-                  {sec.label} ({sec.questionCount})
+                  {sec.label} ({sec.questionCount}) ·{' '}
+                  <span className="font-mono text-[11px] opacity-90">
+                    {formatClock(secElapsedSec)}
+                  </span>
                 </span>
               </button>
             );
@@ -1137,11 +1370,20 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 sm:gap-3 text-xs">
-                  {/* Elapsed Time on Current Question */}
+                  {/* Elapsed Time on Current Subject & Current Question */}
+                  <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 font-mono text-[11px] sm:text-xs text-emerald-900 dark:text-emerald-200">
+                    <Clock className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                    <span>
+                      {currentSection?.shortLabel || 'Subj'}:{' '}
+                      {formatClock(
+                        currentSection ? sectionTimes[currentSection.subject] || 0 : 0
+                      )}
+                    </span>
+                  </div>
                   {!isSolutionsMode && (
                     <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-[11px] sm:text-xs text-slate-700 dark:text-slate-300">
                       <Clock className="w-3 h-3 text-slate-400" />
-                      <span>Time: {formatClock(questionSeconds)}</span>
+                      <span>Q: {formatClock(questionSeconds)}</span>
                     </div>
                   )}
 
@@ -1433,15 +1675,25 @@ export const ExamTerminalModal: React.FC<ExamTerminalModalProps> = ({
                 {isSolutionsMode ? 'Solution & Explanation Review' : 'Active Candidate'}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={requestExamFullscreen}
-              className="text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1 cursor-pointer shrink-0"
-              title="Enter Fullscreen"
-            >
-              <Maximize2 className="w-3.5 h-3.5" />
-              <span>Fullscreen</span>
-            </button>
+            {isSolutionsMode ? (
+              <button
+                type="button"
+                onClick={requestExamFullscreen}
+                className="text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1 cursor-pointer shrink-0"
+                title="Enter Fullscreen"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+                <span>Fullscreen</span>
+              </button>
+            ) : (
+              <span
+                title="Fullscreen Locked — Exiting fullscreen or pressing any keyboard key auto-submits the exam"
+                className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 flex items-center gap-1 shrink-0"
+              >
+                <Lock className="w-3 h-3" />
+                <span>Fullscreen Locked</span>
+              </span>
+            )}
           </div>
 
           {/* Palette Legend */}

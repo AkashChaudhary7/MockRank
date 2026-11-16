@@ -141,6 +141,7 @@ export interface SectionScoreBreakdown {
   score: number;
   maxMarks: number;
   accuracy: number;
+  timeTakenSeconds?: number;
 }
 
 export interface QuestionReviewItem {

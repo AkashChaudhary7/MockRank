@@ -1771,11 +1771,22 @@ export async function publishAnswerKeyAndRecalculateMockScoresAdmin(params: {
       if (att.status !== 'completed') continue;
 
       if (att.mockId === safeMockId) {
+        const existingSectionTimes: Partial<Record<SubjectSlug, number>> = {};
+        if (att.sectionScores) {
+          for (const subj of ALL_7_SUBJECTS) {
+            const prevSecTime = att.sectionScores[subj]?.timeTakenSeconds;
+            if (typeof prevSecTime === 'number' && prevSecTime >= 0) {
+              existingSectionTimes[subj] = prevSecTime;
+            }
+          }
+        }
+
         const reEval = evaluateMockAttemptClientSide({
           mockId: safeMockId,
           questions: params.questions,
           responses: att.responses || {},
           timeTakenSeconds: Number(att.timeTakenSeconds || 0),
+          sectionTimeSeconds: existingSectionTimes,
           correctMarks,
           incorrectMarks,
         });
@@ -1814,16 +1825,16 @@ export async function publishAnswerKeyAndRecalculateMockScoresAdmin(params: {
         const mockLbRef = doc(db, 'leaderboard_mocks', safeMockId, 'entries', sanitizeId(att.uid));
         batch.set(mockLbRef, {
           uid: sanitizeId(att.uid),
-          candidateName,
           mockId: safeMockId,
-          dayNumber: Math.min(15, Math.max(1, Math.round(att.dayNumber || params.blueprint.dayNumber || 1))),
+          candidateName,
           score: reEval.score,
-          partAScore: reEval.partAScore,
-          partBScore: reEval.partBScore,
+          correctAnswers: reEval.correctAnswers,
+          incorrectAnswers: reEval.incorrectAnswers,
+          unattemptedQuestions: reEval.unattemptedQuestions,
           accuracy: reEval.accuracy,
-          timeTakenSeconds: Math.max(0, Math.round(att.timeTakenSeconds || 0)),
+          timeTakenSeconds: Math.max(0, Math.min(10800, Math.round(att.timeTakenSeconds || 0))),
           submittedAt: (att.submittedAt || att.startedAt || new Date().toISOString()).slice(0, 40),
-          sectionScores: reEval.sectionScores,
+          updatedAt: serverTimestamp(),
         });
 
         if (!completedAttemptsByUid[att.uid]) {

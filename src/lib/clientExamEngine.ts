@@ -362,11 +362,112 @@ export async function fetchExamPaperSafe(params: {
   };
 }
 
+export function formatDurationHuman(seconds?: number): string {
+  const totalSec = Math.max(0, Math.round(Number(seconds || 0)));
+  const hrs = Math.floor(totalSec / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+  if (hrs > 0) {
+    return `${hrs}h ${mins}m ${secs}s`;
+  }
+  return `${mins}m ${secs}s`;
+}
+
+export function resolveSectionTimeMap(
+  totalTimeTakenSeconds: number,
+  sectionScores?: Record<string, SectionScoreBreakdown>,
+  explicitSectionTimes?: Partial<Record<SubjectSlug, number>>
+): Record<SubjectSlug, number> {
+  const safeTotal = Math.max(0, Math.min(10800, Math.round(Number(totalTimeTakenSeconds || 0))));
+  const result: Record<SubjectSlug, number> = {
+    'general-awareness': 0,
+    reasoning: 0,
+    mathematics: 0,
+    hindi: 0,
+    english: 0,
+    'computer-science': 0,
+    'teaching-methodology': 0,
+  };
+
+  let explicitSum = 0;
+  let hasExplicit = false;
+
+  for (const subj of ALL_SUBJECTS) {
+    const rawVal =
+      typeof explicitSectionTimes?.[subj] === 'number'
+        ? explicitSectionTimes[subj]
+        : sectionScores?.[subj]?.timeTakenSeconds;
+    if (typeof rawVal === 'number' && rawVal >= 0) {
+      const clamped = Math.max(0, Math.min(10800, Math.round(rawVal)));
+      result[subj] = clamped;
+      explicitSum += clamped;
+      if (clamped > 0) {
+        hasExplicit = true;
+      }
+    }
+  }
+
+  if (hasExplicit) {
+    // If total time differs slightly due to timer rounding, adjust largest section so sum equals totalTimeTakenSeconds
+    if (safeTotal > 0 && Math.abs(explicitSum - safeTotal) > 0 && explicitSum <= safeTotal) {
+      const diff = safeTotal - explicitSum;
+      let maxSubj: SubjectSlug = 'computer-science';
+      for (const subj of ALL_SUBJECTS) {
+        if (result[subj] > result[maxSubj]) {
+          maxSubj = subj;
+        }
+      }
+      result[maxSubj] = Math.max(0, result[maxSubj] + diff);
+    }
+    return result;
+  }
+
+  // Fallback for historical attempts before per-subject timer was recorded:
+  // Distribute total time proportionally by attempted questions (or total questions in section)
+  if (safeTotal <= 0) return result;
+
+  const weights: Record<SubjectSlug, number> = {
+    'general-awareness': 20,
+    reasoning: 20,
+    mathematics: 20,
+    hindi: 20,
+    english: 20,
+    'computer-science': 80,
+    'teaching-methodology': 20,
+  };
+
+  let totalWeight = 0;
+  for (const subj of ALL_SUBJECTS) {
+    const sec = sectionScores?.[subj];
+    if (sec) {
+      const attempted = (sec.correct || 0) + (sec.incorrect || 0);
+      const w = attempted > 0 ? attempted * 2 + (sec.totalQuestions || 20) * 0.25 : (sec.totalQuestions || 20) * 0.25;
+      weights[subj] = Math.max(1, w);
+    }
+    totalWeight += weights[subj];
+  }
+
+  let allocated = 0;
+  for (let i = 0; i < ALL_SUBJECTS.length; i++) {
+    const subj = ALL_SUBJECTS[i];
+    if (i === ALL_SUBJECTS.length - 1) {
+      result[subj] = Math.max(0, safeTotal - allocated);
+    } else {
+      const share = Math.round((safeTotal * weights[subj]) / Math.max(1, totalWeight));
+      result[subj] = share;
+      allocated += share;
+    }
+  }
+
+  return result;
+}
+
 export function evaluateMockAttemptClientSide(params: {
   mockId: string;
   questions: PublicQuestion[];
   responses: Record<string, number>;
   timeTakenSeconds: number;
+  sectionTimeSeconds?: Partial<Record<SubjectSlug, number>>;
   correctMarks?: number;
   incorrectMarks?: number;
   allowAnswerReview?: boolean;
@@ -410,6 +511,7 @@ export function evaluateMockAttemptClientSide(params: {
       score: 0,
       maxMarks: 0,
       accuracy: 0,
+      timeTakenSeconds: 0,
     };
   }
 
@@ -432,6 +534,7 @@ export function evaluateMockAttemptClientSide(params: {
         score: 0,
         maxMarks: 0,
         accuracy: 0,
+        timeTakenSeconds: 0,
       };
     }
 
@@ -480,6 +583,13 @@ export function evaluateMockAttemptClientSide(params: {
     }
   }
 
+  const safeTotalTime = Math.max(0, Math.min(10800, Math.round(params.timeTakenSeconds || 0)));
+  const resolvedTimes = resolveSectionTimeMap(
+    safeTotalTime,
+    sectionScores,
+    params.sectionTimeSeconds
+  );
+
   let partAScore = 0;
   let partBScore = 0;
   let partAMaxMarks = 0;
@@ -492,6 +602,7 @@ export function evaluateMockAttemptClientSide(params: {
     const secAttempted = sec.correct + sec.incorrect;
     sec.accuracy =
       secAttempted > 0 ? Number(((sec.correct / secAttempted) * 100).toFixed(2)) : 0;
+    sec.timeTakenSeconds = resolvedTimes[subj] ?? 0;
 
     if (sec.part === 'Part A') {
       partAScore += sec.score;
@@ -531,7 +642,7 @@ export function evaluateMockAttemptClientSide(params: {
     partBMaxMarks,
     percentage,
     accuracy,
-    timeTakenSeconds: Math.max(0, Math.min(10800, Math.round(params.timeTakenSeconds || 0))),
+    timeTakenSeconds: safeTotalTime,
     sectionScores,
     reviewItems: params.allowAnswerReview ? reviewItems : undefined,
   };
@@ -542,6 +653,7 @@ export async function evaluateExamAttemptSafe(params: {
   dayNumber: number;
   responses: Record<string, number>;
   timeTakenSeconds: number;
+  sectionTimeSeconds?: Partial<Record<SubjectSlug, number>>;
   correctMarks: number;
   incorrectMarks: number;
   sections: SectionBlueprint[];
@@ -569,7 +681,22 @@ export async function evaluateExamAttemptSafe(params: {
   );
 
   if (apiEval) {
-    return apiEval;
+    const resolvedTimes = resolveSectionTimeMap(
+      apiEval.timeTakenSeconds,
+      apiEval.sectionScores,
+      params.sectionTimeSeconds
+    );
+    const enrichedSections: Record<string, SectionScoreBreakdown> = {};
+    for (const [k, v] of Object.entries(apiEval.sectionScores || {})) {
+      enrichedSections[k] = {
+        ...v,
+        timeTakenSeconds: resolvedTimes[k as SubjectSlug] ?? v.timeTakenSeconds ?? 0,
+      };
+    }
+    return {
+      ...apiEval,
+      sectionScores: enrichedSections,
+    };
   }
 
   return evaluateMockAttemptClientSide({
@@ -577,6 +704,7 @@ export async function evaluateExamAttemptSafe(params: {
     questions: params.questions,
     responses: params.responses,
     timeTakenSeconds: params.timeTakenSeconds,
+    sectionTimeSeconds: params.sectionTimeSeconds,
     correctMarks: params.correctMarks,
     incorrectMarks: params.incorrectMarks,
     allowAnswerReview: false,

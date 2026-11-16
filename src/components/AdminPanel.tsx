@@ -54,8 +54,20 @@ import {
 } from '../lib/firestoreService';
 import {
   fetchQuestionBankHealthSafe,
+  formatDurationHuman,
+  resolveSectionTimeMap,
   verifyAdminPasswordSafe,
 } from '../lib/clientExamEngine';
+
+const ADMIN_SUBJECT_SHORT_LABELS: { slug: SubjectSlug; short: string }[] = [
+  { slug: 'general-awareness', short: 'GA' },
+  { slug: 'reasoning', short: 'Reas' },
+  { slug: 'mathematics', short: 'Math' },
+  { slug: 'hindi', short: 'Hin' },
+  { slug: 'english', short: 'Eng' },
+  { slug: 'computer-science', short: 'CS' },
+  { slug: 'teaching-methodology', short: 'TM' },
+];
 
 interface AdminPanelProps {
   adminUid: string;
@@ -2494,12 +2506,44 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           <th className="py-2.5 px-3 font-semibold text-right">Avg Score</th>
                           <th className="py-2.5 px-3 font-semibold text-right">Part A Avg</th>
                           <th className="py-2.5 px-3 font-semibold text-right">Part B Avg</th>
+                          <th className="py-2.5 px-3 font-semibold text-right">Total / Avg Time</th>
+                          <th className="py-2.5 px-3 font-semibold">Avg Subject Time (7 Sections)</th>
                           <th className="py-2.5 px-4 font-semibold text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200">
                         {filteredCandidates.map((c) => {
                           const displayCandidateName = c.username ? `@${c.username}` : c.fullName;
+                          const userCompletedAtts = allAttempts.filter(
+                            (a) => a.uid === c.uid && a.status === 'completed'
+                          );
+                          const totalSec = userCompletedAtts.reduce(
+                            (sum, a) => sum + Math.max(0, Math.round(Number(a.timeTakenSeconds || 0))),
+                            0
+                          );
+                          const avgSec =
+                            userCompletedAtts.length > 0
+                              ? Math.round(totalSec / userCompletedAtts.length)
+                              : 0;
+                          const subjTotals: Record<SubjectSlug, number> = {
+                            'general-awareness': 0,
+                            reasoning: 0,
+                            mathematics: 0,
+                            hindi: 0,
+                            english: 0,
+                            'computer-science': 0,
+                            'teaching-methodology': 0,
+                          };
+                          for (const att of userCompletedAtts) {
+                            const secMap = resolveSectionTimeMap(
+                              att.timeTakenSeconds,
+                              att.sectionScores
+                            );
+                            for (const item of ADMIN_SUBJECT_SHORT_LABELS) {
+                              subjTotals[item.slug] += Number(secMap[item.slug] || 0);
+                            }
+                          }
+
                           return (
                             <tr key={c.uid}>
                               <td className="py-2.5 px-4 font-medium text-slate-900">
@@ -2547,6 +2591,38 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               <td className="py-2.5 px-3 text-right font-mono">
                                 {(c.partBAverageScore || 0).toFixed(2)}
                               </td>
+                              <td className="py-2.5 px-3 text-right font-mono text-xs whitespace-nowrap">
+                                <div className="font-bold text-slate-900">
+                                  {formatDurationHuman(totalSec)}
+                                </div>
+                                <div className="text-[10px] text-slate-500">
+                                  Avg: {formatDurationHuman(avgSec)}
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3">
+                                {userCompletedAtts.length === 0 ? (
+                                  <span className="text-[11px] font-mono text-slate-400">
+                                    No attempts
+                                  </span>
+                                ) : (
+                                  <div className="flex flex-wrap gap-1 max-w-[340px]">
+                                    {ADMIN_SUBJECT_SHORT_LABELS.map((item) => {
+                                      const avgSubjSec = Math.round(
+                                        subjTotals[item.slug] / userCompletedAtts.length
+                                      );
+                                      return (
+                                        <span
+                                          key={item.slug}
+                                          className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-[10px] whitespace-nowrap"
+                                        >
+                                          <strong>{item.short}:</strong>{' '}
+                                          {formatDurationHuman(avgSubjSec)}
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </td>
                               <td className="py-2.5 px-4 text-right space-x-1.5 whitespace-nowrap">
                                 {onInspectUserScorecard && (
                                   <button
@@ -2582,17 +2658,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                   <div>
                     <h4 className="text-sm font-bold text-slate-900 mb-2">
-                      Recent Official Attempts (View Whole Scorecard, Reset or Invalidate)
+                      Recent Official Attempts (Total Time, Subject Time, Whole Scorecard, Reset or Invalidate)
                     </h4>
                     <div className="border border-slate-200 rounded-lg overflow-x-auto">
                       <table className="w-full text-left border-collapse text-xs">
                         <thead>
                           <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
-                            <th className="py-2.5 px-3 font-semibold">Attempt ID</th>
+                            <th className="py-2.5 px-3 font-semibold">Candidate / Attempt</th>
                             <th className="py-2.5 px-3 font-semibold">Mock</th>
                             <th className="py-2.5 px-3 font-semibold">Status</th>
                             <th className="py-2.5 px-3 font-semibold text-right">Score</th>
                             <th className="py-2.5 px-3 font-semibold text-right">Accuracy</th>
+                            <th className="py-2.5 px-3 font-semibold text-right">Total Time</th>
+                            <th className="py-2.5 px-3 font-semibold">Time Per Subject (All 7)</th>
                             <th className="py-2.5 px-3 font-semibold text-right">Actions</th>
                           </tr>
                         </thead>
@@ -2602,9 +2680,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             const candidateLabel = matchedUser?.username
                               ? `@${matchedUser.username}`
                               : matchedUser?.fullName || att.uid;
+                            const resolvedSecTimes = resolveSectionTimeMap(
+                              att.timeTakenSeconds,
+                              att.sectionScores
+                            );
                             return (
                               <tr key={att.attemptId}>
-                                <td className="py-2.5 px-3 font-mono">{att.attemptId}</td>
+                                <td className="py-2.5 px-3">
+                                  <div className="font-semibold text-slate-900">
+                                    {candidateLabel}
+                                  </div>
+                                  <div className="text-[10px] font-mono text-slate-500">
+                                    {att.attemptId}
+                                  </div>
+                                </td>
                                 <td className="py-2.5 px-3 font-mono">{att.mockId}</td>
                                 <td className="py-2.5 px-3">{att.status}</td>
                                 <td className="py-2.5 px-3 text-right font-mono font-semibold">
@@ -2629,6 +2718,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </td>
                                 <td className="py-2.5 px-3 text-right font-mono">
                                   {att.accuracy.toFixed(1)}%
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                                  {formatDurationHuman(att.timeTakenSeconds)}
+                                </td>
+                                <td className="py-2.5 px-3">
+                                  <div className="flex flex-wrap gap-1 max-w-[340px]">
+                                    {ADMIN_SUBJECT_SHORT_LABELS.map((item) => (
+                                      <span
+                                        key={item.slug}
+                                        className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-[10px] whitespace-nowrap"
+                                      >
+                                        <strong>{item.short}:</strong>{' '}
+                                        {formatDurationHuman(resolvedSecTimes[item.slug])}
+                                      </span>
+                                    ))}
+                                  </div>
                                 </td>
                                 <td className="py-2.5 px-3 text-right space-x-2 whitespace-nowrap">
                                   {onInspectUserScorecard && att.status === 'completed' && (

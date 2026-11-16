@@ -18,8 +18,13 @@ import {
   PublicQuestion,
   QuestionReviewItem,
   SectionScoreBreakdown,
+  SubjectSlug,
 } from '../types/mockrank';
-import { fetchExamReviewSafe } from '../lib/clientExamEngine';
+import {
+  fetchExamReviewSafe,
+  formatDurationHuman,
+  resolveSectionTimeMap,
+} from '../lib/clientExamEngine';
 
 interface MockResultPageProps {
   attempt: ExamAttempt;
@@ -81,6 +86,19 @@ export const MockResultModal: React.FC<MockResultPageProps> = ({
     ? Object.values(attempt.sectionScores)
     : [];
 
+  const resolvedSectionTimes = resolveSectionTimeMap(
+    attempt.timeTakenSeconds || 0,
+    attempt.sectionScores
+  );
+
+  const partATimeSeconds = (
+    ['general-awareness', 'reasoning', 'mathematics', 'hindi', 'english'] as SubjectSlug[]
+  ).reduce((acc, s) => acc + (resolvedSectionTimes[s] || 0), 0);
+
+  const partBTimeSeconds = (
+    ['computer-science', 'teaching-methodology'] as SubjectSlug[]
+  ).reduce((acc, s) => acc + (resolvedSectionTimes[s] || 0), 0);
+
   const partAScore =
     typeof attempt.partAScore === 'number'
       ? attempt.partAScore
@@ -118,7 +136,8 @@ export const MockResultModal: React.FC<MockResultPageProps> = ({
     `Candidate: ${candidateName || 'Aspirant'}`,
     `Mock Test: ${mockTitle} (${attempt.mockId})`,
     `Total Score: ${attempt.score.toFixed(2)} / ${maxMarks.toFixed(0)}`,
-    `Part A Score: ${partAScore.toFixed(2)} | Part B Score: ${partBScore.toFixed(2)}`,
+    `Part A Score: ${partAScore.toFixed(2)} (${formatDurationHuman(partATimeSeconds)}) | Part B Score: ${partBScore.toFixed(2)} (${formatDurationHuman(partBTimeSeconds)})`,
+    `Total Time Taken: ${formatDurationHuman(attempt.timeTakenSeconds)}`,
     `Correct: ${attempt.correctAnswers} | Incorrect: ${attempt.incorrectAnswers} | Accuracy: ${attempt.accuracy.toFixed(1)}%`,
     `Rank in Mock: #${myMockRank} of ${totalParticipants}`,
     ``,
@@ -389,19 +408,25 @@ export const MockResultModal: React.FC<MockResultPageProps> = ({
 
             <div className="p-3.5 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
               <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
-                Part-Wise Breakdown
+                Part-Wise Score &amp; Time
               </div>
-              <div className="text-base sm:text-xl font-bold font-mono text-slate-950 dark:text-white mt-1">
-                Part A: {partAScore.toFixed(2)}
+              <div className="text-sm sm:text-lg font-bold font-mono text-slate-950 dark:text-white mt-1">
+                Part A: {partAScore.toFixed(2)}{' '}
+                <span className="text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                  ({formatDurationHuman(partATimeSeconds)})
+                </span>
               </div>
               <div className="text-xs sm:text-sm font-bold font-mono text-slate-800 dark:text-slate-200 mt-1">
-                Part B: {partBScore.toFixed(2)}
+                Part B: {partBScore.toFixed(2)}{' '}
+                <span className="text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                  ({formatDurationHuman(partBTimeSeconds)})
+                </span>
               </div>
             </div>
 
             <div className="p-3.5 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
               <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
-                Rank in This Mock
+                Rank &amp; Total Time
               </div>
               <div className="text-xl sm:text-3xl font-bold font-mono text-slate-950 dark:text-white mt-1">
                 #{myMockRank}{' '}
@@ -409,8 +434,9 @@ export const MockResultModal: React.FC<MockResultPageProps> = ({
                   of {totalParticipants}
                 </span>
               </div>
-              <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Acc: {attempt.accuracy.toFixed(1)}% · {formatDuration(attempt.timeTakenSeconds)}
+              <div className="text-[11px] sm:text-xs text-emerald-700 dark:text-emerald-400 font-semibold font-mono mt-1">
+                Total Time: {formatDurationHuman(attempt.timeTakenSeconds)} · Acc:{' '}
+                {attempt.accuracy.toFixed(1)}%
               </div>
             </div>
 
@@ -449,12 +475,22 @@ export const MockResultModal: React.FC<MockResultPageProps> = ({
             </div>
           </div>
 
-          {/* Section-Wise Performance Breakdown Table */}
+          {/* Section-Wise Performance & Subject Time Breakdown Table */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                Section-Wise Score Breakdown
-              </h2>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                  Section-Wise Score &amp; Subject Time Breakdown
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Total Time Taken:{' '}
+                  <strong className="font-mono text-slate-900 dark:text-white">
+                    {formatDurationHuman(attempt.timeTakenSeconds)}
+                  </strong>{' '}
+                  (Part A: {formatDurationHuman(partATimeSeconds)} · Part B:{' '}
+                  {formatDurationHuman(partBTimeSeconds)})
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setActiveTab('solutions')}
@@ -473,32 +509,76 @@ export const MockResultModal: React.FC<MockResultPageProps> = ({
                     <th className="py-3 px-3 font-semibold text-right">Incorrect</th>
                     <th className="py-3 px-3 font-semibold text-right">Unattempted</th>
                     <th className="py-3 px-3 font-semibold text-right">Accuracy</th>
+                    <th className="py-3 px-3 font-semibold text-right">Subject Time</th>
                     <th className="py-3 px-4 font-semibold text-right">Net Score</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                  {sectionList.map((sec) => (
-                    <tr key={sec.subject} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
-                      <td className="py-3.5 px-4 font-medium text-slate-900 dark:text-white">{sec.label}</td>
-                      <td className="py-3.5 px-3 text-right font-mono">{sec.totalQuestions}</td>
-                      <td className="py-3.5 px-3 text-right font-mono text-emerald-700 dark:text-emerald-400 font-semibold">
-                        {sec.correct}
-                      </td>
-                      <td className="py-3.5 px-3 text-right font-mono text-red-700 dark:text-red-400">
-                        {sec.incorrect}
-                      </td>
-                      <td className="py-3.5 px-3 text-right font-mono text-slate-500 dark:text-slate-400">
-                        {sec.unattempted}
-                      </td>
-                      <td className="py-3.5 px-3 text-right font-mono">
-                        {sec.accuracy.toFixed(1)}%
-                      </td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
-                        {sec.score.toFixed(2)} / {sec.maxMarks.toFixed(0)}
-                      </td>
-                    </tr>
-                  ))}
+                  {sectionList.map((sec) => {
+                    const secTimeSec =
+                      resolvedSectionTimes[sec.subject] ?? sec.timeTakenSeconds ?? 0;
+                    const avgPerQ =
+                      sec.totalQuestions > 0 ? Math.round(secTimeSec / sec.totalQuestions) : 0;
+                    return (
+                      <tr
+                        key={sec.subject}
+                        className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
+                      >
+                        <td className="py-3.5 px-4 font-medium text-slate-900 dark:text-white">
+                          {sec.label}
+                        </td>
+                        <td className="py-3.5 px-3 text-right font-mono">{sec.totalQuestions}</td>
+                        <td className="py-3.5 px-3 text-right font-mono text-emerald-700 dark:text-emerald-400 font-semibold">
+                          {sec.correct}
+                        </td>
+                        <td className="py-3.5 px-3 text-right font-mono text-red-700 dark:text-red-400">
+                          {sec.incorrect}
+                        </td>
+                        <td className="py-3.5 px-3 text-right font-mono text-slate-500 dark:text-slate-400">
+                          {sec.unattempted}
+                        </td>
+                        <td className="py-3.5 px-3 text-right font-mono">
+                          {sec.accuracy.toFixed(1)}%
+                        </td>
+                        <td className="py-3.5 px-3 text-right font-mono font-semibold text-sky-900 dark:text-sky-300 whitespace-nowrap">
+                          <div>{formatDurationHuman(secTimeSec)}</div>
+                          <div className="text-[10px] font-normal text-slate-400">
+                            ~{avgPerQ}s / Q
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                          {sec.score.toFixed(2)} / {sec.maxMarks.toFixed(0)}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-950/80 font-bold text-slate-950 dark:text-white">
+                    <td className="py-3.5 px-4">Total (All 7 Subjects)</td>
+                    <td className="py-3.5 px-3 text-right font-mono">
+                      {sectionList.reduce((acc, s) => acc + s.totalQuestions, 0)}
+                    </td>
+                    <td className="py-3.5 px-3 text-right font-mono text-emerald-700 dark:text-emerald-400">
+                      {attempt.correctAnswers}
+                    </td>
+                    <td className="py-3.5 px-3 text-right font-mono text-red-700 dark:text-red-400">
+                      {attempt.incorrectAnswers}
+                    </td>
+                    <td className="py-3.5 px-3 text-right font-mono text-slate-500 dark:text-slate-400">
+                      {attempt.unattemptedQuestions}
+                    </td>
+                    <td className="py-3.5 px-3 text-right font-mono">
+                      {attempt.accuracy.toFixed(1)}%
+                    </td>
+                    <td className="py-3.5 px-3 text-right font-mono text-emerald-700 dark:text-emerald-400 whitespace-nowrap">
+                      {formatDurationHuman(attempt.timeTakenSeconds)}
+                    </td>
+                    <td className="py-3.5 px-4 text-right font-mono whitespace-nowrap">
+                      {attempt.score.toFixed(2)} / {maxMarks.toFixed(0)}
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           </div>

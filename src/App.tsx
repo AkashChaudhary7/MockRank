@@ -48,6 +48,8 @@ import {
   evaluateExamAttemptSafe,
   fetchExamPaperSafe,
   fetchTimeAndConfigSafe,
+  formatDurationHuman,
+  resolveSectionTimeMap,
 } from './lib/clientExamEngine';
 import {
   autosaveExamAttemptProgress,
@@ -407,9 +409,35 @@ export default function App() {
     return found?.rank || 1;
   }, [completedAttemptsCount, equalMocksCohortLeaderboard, userProfile]);
 
-  // Compute Section-Wise & Part-Wise Average Scores strictly from active completedAttempts
-  const { sectionAvgMap, partAAvg, partBAvg } = useMemo(() => {
+  // Compute Section-Wise & Part-Wise Average Scores + Total & Per-Subject Time strictly from active completedAttempts
+  const {
+    sectionAvgMap,
+    partAAvg,
+    partBAvg,
+    totalTimeSpentSeconds,
+    avgTimePerMockSeconds,
+    sectionTimeAvgMap,
+    sectionTimeTotalMap,
+  } = useMemo(() => {
     const map: Record<SubjectSlug, number> = {
+      'general-awareness': 0,
+      'reasoning': 0,
+      'mathematics': 0,
+      'hindi': 0,
+      'english': 0,
+      'computer-science': 0,
+      'teaching-methodology': 0,
+    };
+    const timeTotalMap: Record<SubjectSlug, number> = {
+      'general-awareness': 0,
+      'reasoning': 0,
+      'mathematics': 0,
+      'hindi': 0,
+      'english': 0,
+      'computer-science': 0,
+      'teaching-methodology': 0,
+    };
+    const timeAvgMap: Record<SubjectSlug, number> = {
       'general-awareness': 0,
       'reasoning': 0,
       'mathematics': 0,
@@ -420,13 +448,28 @@ export default function App() {
     };
 
     if (completedAttempts.length === 0) {
-      return { sectionAvgMap: map, partAAvg: 0, partBAvg: 0 };
+      return {
+        sectionAvgMap: map,
+        partAAvg: 0,
+        partBAvg: 0,
+        totalTimeSpentSeconds: 0,
+        avgTimePerMockSeconds: 0,
+        sectionTimeAvgMap: timeAvgMap,
+        sectionTimeTotalMap: timeTotalMap,
+      };
     }
 
     const n = completedAttempts.length;
     let hasSectionBreakdowns = false;
+    let totalTimeSec = 0;
 
     for (const att of completedAttempts) {
+      totalTimeSec += Math.max(0, Math.round(Number(att.timeTakenSeconds || 0)));
+      const resolvedTimes = resolveSectionTimeMap(att.timeTakenSeconds, att.sectionScores);
+      for (const item of SECTION_CARDS_META) {
+        timeTotalMap[item.subject] += Number(resolvedTimes[item.subject] || 0);
+      }
+
       if (att.sectionScores && Object.keys(att.sectionScores).length > 0) {
         hasSectionBreakdowns = true;
         for (const item of SECTION_CARDS_META) {
@@ -434,6 +477,11 @@ export default function App() {
         }
       }
     }
+
+    for (const item of SECTION_CARDS_META) {
+      timeAvgMap[item.subject] = Math.round(timeTotalMap[item.subject] / n);
+    }
+    const avgTimeSec = Math.round(totalTimeSec / n);
 
     if (hasSectionBreakdowns) {
       for (const item of SECTION_CARDS_META) {
@@ -449,7 +497,15 @@ export default function App() {
         ).toFixed(2)
       );
       const pB = Number((map['computer-science'] + map['teaching-methodology']).toFixed(2));
-      return { sectionAvgMap: map, partAAvg: pA, partBAvg: pB };
+      return {
+        sectionAvgMap: map,
+        partAAvg: pA,
+        partBAvg: pB,
+        totalTimeSpentSeconds: totalTimeSec,
+        avgTimePerMockSeconds: avgTimeSec,
+        sectionTimeAvgMap: timeAvgMap,
+        sectionTimeTotalMap: timeTotalMap,
+      };
     }
 
     if (userProfile?.sectionAverages && Object.keys(userProfile.sectionAverages).length > 0) {
@@ -472,10 +528,26 @@ export default function App() {
         typeof userProfile.partBAverageScore === 'number'
           ? userProfile.partBAverageScore
           : Number((map['computer-science'] + map['teaching-methodology']).toFixed(2));
-      return { sectionAvgMap: map, partAAvg: pA, partBAvg: pB };
+      return {
+        sectionAvgMap: map,
+        partAAvg: pA,
+        partBAvg: pB,
+        totalTimeSpentSeconds: totalTimeSec,
+        avgTimePerMockSeconds: avgTimeSec,
+        sectionTimeAvgMap: timeAvgMap,
+        sectionTimeTotalMap: timeTotalMap,
+      };
     }
 
-    return { sectionAvgMap: map, partAAvg: 0, partBAvg: 0 };
+    return {
+      sectionAvgMap: map,
+      partAAvg: 0,
+      partBAvg: 0,
+      totalTimeSpentSeconds: totalTimeSec,
+      avgTimePerMockSeconds: avgTimeSec,
+      sectionTimeAvgMap: timeAvgMap,
+      sectionTimeTotalMap: timeTotalMap,
+    };
   }, [completedAttempts, userProfile]);
 
   const attemptsByMockId = useMemo(() => {
@@ -969,7 +1041,8 @@ export default function App() {
     responses: Record<string, number>,
     markedForReview: string[],
     timeTakenSeconds: number,
-    autoSubmitReason?: string
+    autoSubmitReason?: string,
+    sectionTimeSeconds?: Partial<Record<SubjectSlug, number>>
   ) => {
     if (!activeExam) return;
 
@@ -979,6 +1052,7 @@ export default function App() {
         dayNumber: activeExam.dayNumber,
         responses,
         timeTakenSeconds,
+        sectionTimeSeconds,
         correctMarks: activeExam.correctMarks,
         incorrectMarks: activeExam.incorrectMarks,
         sections: activeExam.sections,
@@ -1445,6 +1519,30 @@ export default function App() {
                         Completed Mocks:{' '}
                         <strong>{adminInspectedUser.completedAttempts.length}</strong>
                       </span>
+                      <span>
+                        Total Time:{' '}
+                        <strong>
+                          {formatDurationHuman(
+                            adminInspectedUser.completedAttempts.reduce(
+                              (sum, a) => sum + Number(a.timeTakenSeconds || 0),
+                              0
+                            )
+                          )}
+                        </strong>
+                      </span>
+                      <span>
+                        Avg Time / Mock:{' '}
+                        <strong>
+                          {formatDurationHuman(
+                            Math.round(
+                              adminInspectedUser.completedAttempts.reduce(
+                                (sum, a) => sum + Number(a.timeTakenSeconds || 0),
+                                0
+                              ) / Math.max(1, adminInspectedUser.completedAttempts.length)
+                            )
+                          )}
+                        </strong>
+                      </span>
                     </div>
                   </div>
 
@@ -1482,7 +1580,7 @@ export default function App() {
                 {/* Switch between all Mocks attempted by this Candidate */}
                 <div className="pt-3 border-t border-emerald-200/80 dark:border-emerald-900/60 space-y-2">
                   <div className="text-[11px] font-semibold text-emerald-900 dark:text-emerald-300 uppercase tracking-wide">
-                    Select Mock Attempt to Inspect Complete Scorecard (
+                    Select Mock Attempt to Inspect Complete Scorecard & Subject Times (
                     {adminInspectedUser.completedAttempts.length} Attempted):
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -1503,6 +1601,9 @@ export default function App() {
                         >
                           {bpTitle} ·{' '}
                           <span className="font-mono font-bold">{att.score.toFixed(2)}</span>
+                          <span className="ml-1.5 text-[10px] font-mono opacity-80">
+                            ({formatDurationHuman(att.timeTakenSeconds)})
+                          </span>
                         </button>
                       );
                     })}
@@ -1647,8 +1748,8 @@ export default function App() {
 
             {activeNav === 'dashboard' && (
               <div className="space-y-6 sm:space-y-8">
-                {/* Top Row: Personal Rank (Equal-Mocks Cohort) + Average Score + Part A & Part B Average Scores (2x2 on Mobile!) */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+                {/* Top Row: Personal Rank + Average Score + Part A & B + Total & Avg Time */}
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-4">
                   <div className="p-3.5 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
                     <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 leading-tight">
                       Personal Rank (Equal Cohort)
@@ -1703,13 +1804,25 @@ export default function App() {
                       Computer Science + Teaching
                     </div>
                   </div>
+
+                  <div className="col-span-2 lg:col-span-1 p-3.5 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                    <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 leading-tight">
+                      Total Exam Time Spent
+                    </div>
+                    <div className="text-xl sm:text-2xl font-bold font-mono text-slate-950 dark:text-white mt-1">
+                      {formatDurationHuman(totalTimeSpentSeconds)}
+                    </div>
+                    <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1 truncate">
+                      Avg / Mock: {formatDurationHuman(avgTimePerMockSeconds)}
+                    </div>
+                  </div>
                 </div>
 
-                {/* Section-Wise Average Scores (All 7 Sections — 2-Column Grid on Mobile) */}
+                {/* Section-Wise Average Scores & Per-Subject Time (All 7 Sections — 2-Column Grid on Mobile) */}
                 <div className="space-y-3 sm:space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
-                      Section-Wise Average Score Breakdown
+                      Section-Wise Score & Subject Time Breakdown
                     </h2>
                     <button
                       type="button"
@@ -1723,6 +1836,8 @@ export default function App() {
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
                     {SECTION_CARDS_META.map((sec) => {
                       const avgVal = sectionAvgMap[sec.subject] ?? 0;
+                      const avgTimeSec = sectionTimeAvgMap[sec.subject] ?? 0;
+                      const totalTimeSec = sectionTimeTotalMap[sec.subject] ?? 0;
                       return (
                         <div
                           key={sec.subject}
@@ -1733,8 +1848,8 @@ export default function App() {
                               <span className="text-[11px] sm:text-xs font-mono font-semibold text-slate-500 dark:text-slate-400">
                                 {sec.part}
                               </span>
-                              <span className="text-[10px] sm:text-[11px] font-mono text-slate-400 dark:text-slate-500">
-                                Avg
+                              <span className="text-[10px] sm:text-[11px] font-mono text-indigo-600 dark:text-indigo-400 font-semibold">
+                                Avg {formatDurationHuman(avgTimeSec)}
                               </span>
                             </div>
                             <h3 className="text-xs sm:text-base font-bold text-slate-950 dark:text-white mt-1 leading-snug">
@@ -1742,13 +1857,21 @@ export default function App() {
                             </h3>
                           </div>
 
-                          <div className="pt-2.5 sm:pt-4 mt-2.5 sm:mt-4 border-t border-slate-100 dark:border-slate-800 flex items-baseline justify-between">
-                            <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
-                              Score
-                            </span>
-                            <span className="text-lg sm:text-2xl font-bold font-mono text-slate-950 dark:text-white">
-                              {avgVal.toFixed(2)}
-                            </span>
+                          <div className="pt-2.5 sm:pt-4 mt-2.5 sm:mt-4 border-t border-slate-100 dark:border-slate-800 space-y-1">
+                            <div className="flex items-baseline justify-between">
+                              <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+                                Avg Score
+                              </span>
+                              <span className="text-lg sm:text-2xl font-bold font-mono text-slate-950 dark:text-white">
+                                {avgVal.toFixed(2)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                              <span>Total Subject Time:</span>
+                              <span className="font-semibold text-slate-700 dark:text-slate-300">
+                                {formatDurationHuman(totalTimeSec)}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       );
@@ -1758,7 +1881,7 @@ export default function App() {
                     <div className="p-3.5 sm:p-5 rounded-xl border border-slate-900 dark:border-slate-700 bg-slate-900 dark:bg-slate-800 text-white flex flex-col justify-between">
                       <div>
                         <div className="text-[10px] sm:text-xs font-mono text-slate-400">
-                          Part-Wise Total
+                          Part-Wise Total & Time
                         </div>
                         <h3 className="text-xs sm:text-base font-bold mt-1 leading-snug">
                           Part A + Part B
@@ -1771,6 +1894,12 @@ export default function App() {
                           <div className="flex items-center justify-between text-slate-300">
                             <span>Part B:</span>
                             <span className="font-bold text-white">{partBAvg.toFixed(2)}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-slate-300">
+                            <span>Avg Time:</span>
+                            <span className="font-bold text-emerald-300">
+                              {formatDurationHuman(avgTimePerMockSeconds)}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -2025,24 +2154,32 @@ export default function App() {
                             </div>
 
                             {isCompleted && attempt && (
-                              <div className="p-3 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 grid grid-cols-3 gap-2 text-xs font-mono">
-                                <div>
-                                  <div className="text-[10px] text-slate-400">Total</div>
-                                  <div className="font-bold text-slate-950 dark:text-white">
-                                    {attempt.score.toFixed(2)}
+                              <div className="p-3 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2 text-xs font-mono">
+                                <div className="grid grid-cols-3 gap-2">
+                                  <div>
+                                    <div className="text-[10px] text-slate-400">Total</div>
+                                    <div className="font-bold text-slate-950 dark:text-white">
+                                      {attempt.score.toFixed(2)}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] text-slate-400">Part A</div>
+                                    <div className="font-semibold text-slate-800 dark:text-slate-200">
+                                      {(attempt.partAScore ?? 0).toFixed(2)}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] text-slate-400">Part B</div>
+                                    <div className="font-semibold text-slate-800 dark:text-slate-200">
+                                      {(attempt.partBScore ?? 0).toFixed(2)}
+                                    </div>
                                   </div>
                                 </div>
-                                <div>
-                                  <div className="text-[10px] text-slate-400">Part A</div>
-                                  <div className="font-semibold text-slate-800 dark:text-slate-200">
-                                    {(attempt.partAScore ?? 0).toFixed(2)}
-                                  </div>
-                                </div>
-                                <div>
-                                  <div className="text-[10px] text-slate-400">Part B</div>
-                                  <div className="font-semibold text-slate-800 dark:text-slate-200">
-                                    {(attempt.partBScore ?? 0).toFixed(2)}
-                                  </div>
+                                <div className="pt-1.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400">
+                                  <span>Time Taken:</span>
+                                  <span className="font-bold text-slate-900 dark:text-slate-200">
+                                    {formatDurationHuman(attempt.timeTakenSeconds)}
+                                  </span>
                                 </div>
                               </div>
                             )}
