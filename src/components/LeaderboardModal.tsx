@@ -1,5 +1,18 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BarChart3, RefreshCw, Search, Shield, Trophy, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ArrowLeft,
+  BarChart3,
+  Check,
+  Copy,
+  Download,
+  Image as ImageIcon,
+  RefreshCw,
+  Search,
+  Share2,
+  Shield,
+  Trophy,
+  X,
+} from 'lucide-react';
 import {
   LeaderboardMockEntry,
   LeaderboardOverallEntry,
@@ -10,6 +23,11 @@ import {
   sortAndRankOverallLeaderboard,
   subscribeToMockLeaderboard,
 } from '../lib/firestoreService';
+import {
+  GeneratedLeaderboardImage,
+  generateLeaderboardImage,
+  LeaderboardExportConfig,
+} from '../lib/leaderboardImageExporter';
 
 interface LeaderboardPageProps {
   currentUid: string;
@@ -89,11 +107,225 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
     });
   }, [mockEntries, normalizedQuery]);
 
+  const [exportTheme, setExportTheme] = useState<'light' | 'dark'>('light');
+  const [exportMaxRows, setExportMaxRows] = useState<number>(25);
+  const [exportBusy, setExportBusy] = useState<boolean>(false);
+  const [exportStatusMsg, setExportStatusMsg] = useState<string | null>(null);
+  const [previewStudioOpen, setPreviewStudioOpen] = useState<boolean>(false);
+  const [generatedPreview, setGeneratedPreview] = useState<GeneratedLeaderboardImage | null>(null);
+
   const handleManualRefresh = () => {
     if (selectedScope === 'overall') {
       onRefreshOverall();
     } else {
       setRefreshCounter((c) => c + 1);
+    }
+  };
+
+  const buildExportConfig = useCallback(
+    (themeOverride?: 'light' | 'dark', maxRowsOverride?: number): LeaderboardExportConfig => {
+      const activeTheme = themeOverride || exportTheme;
+      const activeMax = maxRowsOverride || exportMaxRows;
+
+      if (selectedScope === 'overall') {
+        const cohortSubtitle =
+          cohortFilter === 'all'
+            ? 'All Candidates · Overall Average Score Standings'
+            : cohortFilter === 'my_cohort'
+            ? `Equal-Mocks Cohort (${Math.max(1, currentUserMocksAttempted)} Mock${
+                Math.max(1, currentUserMocksAttempted) > 1 ? 's' : ''
+              } Attempted)`
+            : `Equal-Mocks Cohort (Exactly ${cohortFilter} Mock${
+                Number(cohortFilter) > 1 ? 's' : ''
+              } Attempted)`;
+
+        return {
+          mode: 'overall',
+          title: 'Overall Average Score Leaderboard',
+          subtitle: cohortSubtitle,
+          theme: activeTheme,
+          maxRows: activeMax,
+          overallEntries: filteredOverallEntries,
+        };
+      }
+
+      const matchedBp = blueprints.find((b) => b.mockId === selectedScope);
+      return {
+        mode: 'mock',
+        title: matchedBp ? matchedBp.title : `Mock Test — ${selectedScope}`,
+        subtitle: matchedBp
+          ? `${matchedBp.category || 'DSSSB TGT Computer Science'} · ${matchedBp.totalQuestions} Qs · ${matchedBp.maxMarks} Marks`
+          : `Official Mock Standings (${selectedScope})`,
+        theme: activeTheme,
+        maxRows: activeMax,
+        mockEntries: filteredMockEntries,
+      };
+    },
+    [
+      blueprints,
+      cohortFilter,
+      currentUserMocksAttempted,
+      exportMaxRows,
+      exportTheme,
+      filteredMockEntries,
+      filteredOverallEntries,
+      selectedScope,
+    ]
+  );
+
+  useEffect(() => {
+    if (!previewStudioOpen || !isAdmin) return;
+    let cancelled = false;
+    setExportBusy(true);
+    generateLeaderboardImage(buildExportConfig(exportTheme, exportMaxRows))
+      .then((res) => {
+        if (!cancelled) setGeneratedPreview(res);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setExportStatusMsg(
+            err instanceof Error ? err.message : 'Failed to generate leaderboard image.'
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setExportBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [buildExportConfig, exportMaxRows, exportTheme, isAdmin, previewStudioOpen]);
+
+  const handleDownloadLeaderboardImage = async () => {
+    setExportBusy(true);
+    setExportStatusMsg(null);
+    try {
+      const img =
+        previewStudioOpen && generatedPreview
+          ? generatedPreview
+          : await generateLeaderboardImage(buildExportConfig());
+      const link = document.createElement('a');
+      link.href = img.dataUrl;
+      link.download = img.filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setExportStatusMsg(`Downloaded "${img.filename}"`);
+      window.setTimeout(() => setExportStatusMsg(null), 4000);
+    } catch (err) {
+      setExportStatusMsg(
+        err instanceof Error ? err.message : 'Could not download leaderboard image.'
+      );
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
+  const handleShareLeaderboardImage = async () => {
+    setExportBusy(true);
+    setExportStatusMsg(null);
+    try {
+      const img =
+        previewStudioOpen && generatedPreview
+          ? generatedPreview
+          : await generateLeaderboardImage(buildExportConfig());
+      setGeneratedPreview(img);
+
+      const pngFile = new File([img.blob], img.filename, { type: 'image/png' });
+
+      // 1. Try native Web Share API with image file
+      if (
+        typeof navigator !== 'undefined' &&
+        typeof navigator.share === 'function' &&
+        typeof navigator.canShare === 'function' &&
+        navigator.canShare({ files: [pngFile] })
+      ) {
+        await navigator.share({
+          title: 'MockRank Official Leaderboard',
+          text: img.shareText,
+          files: [pngFile],
+        });
+        setExportStatusMsg('Leaderboard image shared successfully.');
+        window.setTimeout(() => setExportStatusMsg(null), 4000);
+        return;
+      }
+
+      // 2. Try copying PNG image directly to system clipboard (for instant Ctrl+V into WhatsApp/Telegram)
+      if (
+        typeof navigator !== 'undefined' &&
+        navigator.clipboard &&
+        typeof navigator.clipboard.write === 'function' &&
+        typeof ClipboardItem !== 'undefined'
+      ) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'image/png': img.blob,
+          }),
+        ]);
+        setPreviewStudioOpen(true);
+        setExportStatusMsg(
+          'Leaderboard PNG image copied to clipboard! Paste (Ctrl+V) directly into WhatsApp, Telegram, or social media.'
+        );
+        window.setTimeout(() => setExportStatusMsg(null), 5000);
+        return;
+      }
+
+      // 3. Fallback: Open Preview Studio & copy share text
+      setPreviewStudioOpen(true);
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(img.shareText);
+        setExportStatusMsg('Opened Share Studio & copied rank summary text to clipboard.');
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        // User cancelled native share sheet
+        return;
+      }
+      setPreviewStudioOpen(true);
+      setExportStatusMsg('Opened Leaderboard Image Studio to download or copy image.');
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
+  const handleCopyImageToClipboard = async () => {
+    setExportBusy(true);
+    try {
+      const img =
+        generatedPreview || (await generateLeaderboardImage(buildExportConfig()));
+      setGeneratedPreview(img);
+      if (
+        navigator.clipboard &&
+        typeof navigator.clipboard.write === 'function' &&
+        typeof ClipboardItem !== 'undefined'
+      ) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'image/png': img.blob,
+          }),
+        ]);
+        setExportStatusMsg('High-resolution PNG copied to clipboard! Press Ctrl+V to paste.');
+      } else {
+        await handleDownloadLeaderboardImage();
+      }
+    } catch {
+      setExportStatusMsg('Browser blocked image clipboard write — downloading PNG instead.');
+      await handleDownloadLeaderboardImage();
+    } finally {
+      setExportBusy(false);
+      window.setTimeout(() => setExportStatusMsg(null), 4500);
+    }
+  };
+
+  const handleCopyShareText = async () => {
+    try {
+      const img =
+        generatedPreview || (await generateLeaderboardImage(buildExportConfig()));
+      await navigator.clipboard.writeText(img.shareText);
+      setExportStatusMsg('Formatted rank list text copied for WhatsApp / Telegram!');
+      window.setTimeout(() => setExportStatusMsg(null), 4000);
+    } catch {
+      setExportStatusMsg('Could not copy text to clipboard.');
     }
   };
 
@@ -130,15 +362,66 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleManualRefresh}
-          className="flex items-center gap-1.5 px-3 sm:px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-lg cursor-pointer"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          <span>Refresh Standings</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {isAdmin && (
+            <>
+              <button
+                type="button"
+                disabled={exportBusy}
+                onClick={handleDownloadLeaderboardImage}
+                className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-2 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-600 rounded-lg cursor-pointer transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{exportBusy ? 'Generating...' : 'Download Image'}</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={exportBusy}
+                onClick={handleShareLeaderboardImage}
+                className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-2 text-xs font-semibold text-white dark:text-slate-950 bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-slate-200 rounded-lg cursor-pointer transition-colors"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Share Leaderboard</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPreviewStudioOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-lg cursor-pointer"
+              >
+                <ImageIcon className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Preview Poster</span>
+              </button>
+            </>
+          )}
+
+          <button
+            type="button"
+            onClick={handleManualRefresh}
+            className="flex items-center gap-1.5 px-3 sm:px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-lg cursor-pointer"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Refresh Standings</span>
+          </button>
+        </div>
       </div>
+
+      {exportStatusMsg && (
+        <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold text-emerald-900 dark:text-emerald-200 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Check className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <span>{exportStatusMsg}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setExportStatusMsg(null)}
+            className="text-emerald-700 dark:text-emerald-300 hover:underline cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Scope, Cohort Filter & Candidate Search Bar */}
       <div className="p-3.5 sm:p-4 bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
@@ -530,6 +813,136 @@ export const LeaderboardModal: React.FC<LeaderboardPageProps> = ({
           </div>
         )}
       </div>
+
+      {/* Admin Leaderboard Image Preview & Share Studio Modal */}
+      {isAdmin && previewStudioOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden shadow-xl">
+            <div className="px-4 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-mono font-bold text-emerald-700 dark:text-emerald-400 uppercase">
+                  Admin Leaderboard Image Studio
+                </div>
+                <h2 className="text-base sm:text-lg font-bold text-slate-950 dark:text-white">
+                  Download &amp; Share Official Leaderboard Image (2x Retina PNG)
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setPreviewStudioOpen(false)}
+                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Customization & Quick Action Toolbar */}
+            <div className="px-4 sm:px-6 py-3 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="font-semibold text-slate-600 dark:text-slate-400">
+                  Poster Theme:
+                </span>
+                <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setExportTheme('light')}
+                    className={`px-2.5 py-1 rounded-md font-semibold cursor-pointer ${
+                      exportTheme === 'light'
+                        ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-950'
+                        : 'text-slate-600 dark:text-slate-400'
+                    }`}
+                  >
+                    Light
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExportTheme('dark')}
+                    className={`px-2.5 py-1 rounded-md font-semibold cursor-pointer ${
+                      exportTheme === 'dark'
+                        ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-950'
+                        : 'text-slate-600 dark:text-slate-400'
+                    }`}
+                  >
+                    Dark
+                  </button>
+                </div>
+
+                <span className="font-semibold text-slate-600 dark:text-slate-400 ml-2">
+                  Rows:
+                </span>
+                <select
+                  value={exportMaxRows}
+                  onChange={(e) => setExportMaxRows(Number(e.target.value))}
+                  className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-semibold cursor-pointer"
+                >
+                  <option value={10}>Top 10 Candidates</option>
+                  <option value={25}>Top 25 Candidates</option>
+                  <option value={50}>Top 50 Candidates</option>
+                  <option value={100}>Top 100 Candidates</option>
+                </select>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={exportBusy}
+                  onClick={handleDownloadLeaderboardImage}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-600 rounded-lg cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download PNG</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={exportBusy}
+                  onClick={handleCopyImageToClipboard}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-900 dark:text-white bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded-lg cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Copy Image</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={exportBusy}
+                  onClick={handleCopyShareText}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-900 dark:text-white bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded-lg cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Copy Text</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={exportBusy}
+                  onClick={handleShareLeaderboardImage}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white dark:text-slate-950 bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-slate-200 rounded-lg cursor-pointer"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>Share Now</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Live Image Preview Area */}
+            <div className="p-4 sm:p-6 overflow-y-auto bg-slate-100 dark:bg-slate-950/80 flex-1 flex flex-col items-center justify-start">
+              {exportBusy || !generatedPreview ? (
+                <div className="py-20 text-xs font-mono text-slate-500">
+                  Rendering high-resolution Leaderboard image...
+                </div>
+              ) : (
+                <img
+                  src={generatedPreview.dataUrl}
+                  alt="MockRank Leaderboard Poster Preview"
+                  className="w-full max-w-3xl rounded-lg shadow-md border border-slate-300 dark:border-slate-800"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

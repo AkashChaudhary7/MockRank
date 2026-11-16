@@ -7,6 +7,7 @@ import {
   ChevronRight,
   CloudUpload,
   Database,
+  Download,
   Eye,
   FileCode2,
   FileJson,
@@ -19,6 +20,7 @@ import {
   Save,
   Search,
   Settings,
+  Share2,
   Sparkles,
   Trash2,
   Upload,
@@ -58,6 +60,7 @@ import {
   resolveSectionTimeMap,
   verifyAdminPasswordSafe,
 } from '../lib/clientExamEngine';
+import { generateLeaderboardImage } from '../lib/leaderboardImageExporter';
 
 const ADMIN_SUBJECT_SHORT_LABELS: { slug: SubjectSlug; short: string }[] = [
   { slug: 'general-awareness', short: 'GA' },
@@ -1155,6 +1158,92 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.uid.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const buildAdminCandidatesExportEntries = () => {
+    const activeRows = filteredCandidates
+      .filter((c) => c.mocksAttempted > 0)
+      .sort((a, b) => b.averageScore - a.averageScore);
+    return activeRows.map((c, idx) => ({
+      uid: c.uid,
+      candidateName: c.username ? `@${c.username}` : c.fullName,
+      mocksAttempted: c.mocksAttempted,
+      averageScore: c.averageScore,
+      bestScore: c.highestScore || c.averageScore,
+      latestScore: c.latestScore || c.averageScore,
+      partAAverageScore: c.partAAverageScore || 0,
+      partBAverageScore: c.partBAverageScore || 0,
+      averageAccuracy: c.averageAccuracy || 0,
+      lastSubmissionAt: c.registrationDate || new Date().toISOString(),
+      rank: idx + 1,
+    }));
+  };
+
+  const handleAdminDownloadLeaderboardImage = async () => {
+    try {
+      const img = await generateLeaderboardImage({
+        mode: 'overall',
+        title: 'Official Overall Leaderboard Standings',
+        subtitle: 'All Active Candidates · Admin Verified Merit List',
+        theme: 'light',
+        maxRows: 50,
+        overallEntries: buildAdminCandidatesExportEntries(),
+      });
+      const link = document.createElement('a');
+      link.href = img.dataUrl;
+      link.download = img.filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setFeedbackMessage(`Downloaded Leaderboard PNG: ${img.filename}`);
+    } catch (err) {
+      setFeedbackMessage(
+        err instanceof Error ? err.message : 'Failed to generate leaderboard image.'
+      );
+    }
+  };
+
+  const handleAdminShareLeaderboardImage = async () => {
+    try {
+      const img = await generateLeaderboardImage({
+        mode: 'overall',
+        title: 'Official Overall Leaderboard Standings',
+        subtitle: 'All Active Candidates · Admin Verified Merit List',
+        theme: 'light',
+        maxRows: 50,
+        overallEntries: buildAdminCandidatesExportEntries(),
+      });
+      const pngFile = new File([img.blob], img.filename, { type: 'image/png' });
+      if (
+        typeof navigator !== 'undefined' &&
+        typeof navigator.share === 'function' &&
+        typeof navigator.canShare === 'function' &&
+        navigator.canShare({ files: [pngFile] })
+      ) {
+        await navigator.share({
+          title: 'MockRank Official Leaderboard',
+          text: img.shareText,
+          files: [pngFile],
+        });
+        setFeedbackMessage('Leaderboard image shared successfully.');
+        return;
+      }
+      if (
+        typeof navigator !== 'undefined' &&
+        navigator.clipboard &&
+        typeof navigator.clipboard.write === 'function' &&
+        typeof ClipboardItem !== 'undefined'
+      ) {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': img.blob })]);
+        setFeedbackMessage(
+          'Leaderboard PNG image copied to clipboard! Paste (Ctrl+V) into WhatsApp or Telegram.'
+        );
+        return;
+      }
+      await handleAdminDownloadLeaderboardImage();
+    } catch {
+      await handleAdminDownloadLeaderboardImage();
+    }
+  };
 
   const handleVerifyAdminPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2450,6 +2539,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleAdminDownloadLeaderboardImage}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-600 rounded-lg cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download Leaderboard Image</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleAdminShareLeaderboardImage}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg cursor-pointer"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Share Leaderboard</span>
+                  </button>
+
                   {!confirmResetAllMarks ? (
                     <button
                       type="button"
